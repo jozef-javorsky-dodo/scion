@@ -49,8 +49,8 @@ Since the workspace is ephemeral, changes made by the agent must be explicitly r
 *   **Config:** Agents should be configured via environment variables or explicit config files rather than syncing a full home directory.
 
 ### 3. Security & Isolation (Agent Sandbox)
-#### Solution: Runtime Classes
-The `KubernetesRuntime` will support a `runtimeClassName` configuration. If configured (e.g., to `gvisor` or `kata`), the Pod spec will include this, enabling strong kernel-level isolation for untrusted code.
+#### Solution: K8s agent sandbox
+The `KubernetesRuntime` will support a https://github.com/kubernetes-sigs/agent-sandbox - This project is developing a Sandbox Custom Resource Definition (CRD) and controller for Kubernetes. A research note on this is availabe in k8s-agent-sandbox.md in the .design folder of this repo.
 
 ## Local Representation & State
 
@@ -58,14 +58,15 @@ Even though agents run remotely, their "handle" must remain local to maintain a 
 
 ### Directory Structure
 We will retain the `.scion/agents/<agent-name>/` directory for every agent, regardless of runtime.
-<!-- TODO this should be part of the agent structure in the json, which is read only -->
+
 *   **`.scion/agents/<agent-name>/scion.json`**:
     *   **`runtime`**: `"kubernetes"`
-    *   **`kubernetes`**:
+    *   **`kubernetes`**: (Read-only metadata)
         *   `cluster`: "my-cluster-context" (Snapshot of the context used to create it)
         *   `namespace`: "scion-agents"
         *   `podName`: "scion-agent-xyz-123"
         *   `syncedAt`: Timestamp of last sync.
+*   **`.scion/agents/<agent-name>/pod.yaml`**: The generated Pod specification used to create the agent.
 
 ### State Management
 *   **Listing:** `scion list` will iterate through `.scion/agents/`. For K8s agents, it will perform a lightweight API check (e.g., `GetPod`) to update the status (Running/Completed/Error).
@@ -73,69 +74,56 @@ We will retain the `.scion/agents/<agent-name>/` directory for every agent, rega
 
 ## Grove Configuration
 
-<!-- TODO there is not a grove or project level scion.json
-instead there should be an optional kubernetes-config.json
- -->
-A "Grove" (the current project context) needs to define where its remote agents should live. This configuration belongs in the project's `scion.json`.
+A "Grove" (the current project context) needs to define where its remote agents should live. This configuration can be provided via an optional `kubernetes-config.json` in the project's `.scion/` directory.
 
-### Configuration Schema (`scion.json`)
-<!-- TODO only keep the kuberentes specific fields in the kubernetes-config.json 
- -->
+### Configuration Schema (`kubernetes-config.json`)
+
 We will rely on the user's standard `~/.kube/config` for authentication and endpoint details, avoiding the need to manage sensitive credentials within Scion itself.
 
 ```json
 {
-  "template": "default",
-  "image": "gemini-cli-sandbox",
-  "runtime": "kubernetes", // Default runtime for this grove
-  "kubernetes": {
-    "context": "minikube",        // Optional: specific kubeconfig context to use
-    "namespace": "scion-dev",     // Optional: target namespace (default: default)
-    "runtimeClassName": "gvisor", // Optional: for sandboxing
-    "resources": {                // Optional: default resource requests/limits
-      "requests": { "cpu": "500m", "memory": "512Mi" },
-      "limits": { "cpu": "2", "memory": "2Gi" }
-    }
+  "context": "minikube",        // Optional: specific kubeconfig context to use
+  "namespace": "scion-dev",     // Optional: target namespace (default: default)
+  "runtimeClassName": "gvisor", // Optional: for sandboxing
+  "resources": {                // Optional: default resource requests/limits
+    "requests": { "cpu": "500m", "memory": "512Mi" },
+    "limits": { "cpu": "2", "memory": "2Gi" }
   }
 }
 ```
 
-### Hierarchy
-1.  **Agent Config** (Runtime args): Overrides specific settings per agent.
-2.  **Grove Config** (`scion.json`): Sets project-wide defaults (Cluster, Namespace).
-<<!-- TODO  keep the kuberentes specific fields in the global ~/.scion/kubernetes-config.json  -->
-3.  **Global Config** (`~/.config/scion/settings.json`): Sets user defaults (e.g., preferred default runtime).
+## Runtime Selection & Preferences
 
+To ensure maximum flexibility, the choice between `docker` and `kubernetes` runtimes follows a strict resolution hierarchy.
+
+### Resolution Hierarchy (Precedence)
+1.  **Command-line Flag:** `scion run --runtime kubernetes` (One-time override).
+2.  **Agent State:** `.scion/agents/<name>/scion.json` (Locked to the runtime chosen at creation).
+3.  **Template Config:** `templates/<name>/scion.json` (Specific to an agent type/requirement).
+4.  **Grove (Project) Preference:** `.scion/settings.json` (Project-wide defaults).
+5.  **Global Preference:** `~/.scion/settings.json` (User-wide defaults).
+6.  **Default:** `docker`.
+
+### Sticky Runtimes
+Once an agent is created, its runtime is **immutable** and stored in its local `scion.json`. Subsequent `start`, `stop`, or `attach` commands will always use the runtime specified in the agent's state, regardless of changes to global or grove settings.
 
 ## Implementation Plan
 
-### New `KubernetesRuntime` Struct
-Implement the `Runtime` interface in `pkg/runtime/kubernetes.go`.
+### Initial work completed in phase one 
+   1. Dependencies: Added k8s.io/api, k8s.io/apimachinery, and k8s.io/client-go to go.mod.
+   2. API Types: Created pkg/k8s/api/v1alpha1/types.go containing the Go struct definitions for Sandbox, SandboxClaim, and SandboxTemplate
+      mirroring the Agent Sandbox specification.
+   3. Client: Implemented pkg/k8s/client.go, a typed client wrapper using client-go/dynamic to interact with the new CRDs. It also exposes the
+      standard Kubernetes clientset and config.
+   4. Runtime: Scaffolding the KubernetesRuntime in pkg/runtime/kubernetes/runtime.go, implementing the Runtime interface with initial logic
+      for Run, Stop, and Delete.
 
-```go
-type KubernetesRuntime struct {
-    Client      *kubernetes.Clientset
-    Namespace   string
-    Context     string // The kubeconfig context name
-}
-```
+### Next steps (for future sessions):
+   1. Implement the WaitForReady logic in Run to block until the Sandbox is provisioned.
+   2. Implement ListSandboxClaims in the client.
+   3. Implement the tar streaming logic to sync the local context to the remote Sandbox pod.
+   4. Implement Exec logic to start the agent process within the Sandbox.
 
-### Lifecycle Implementation
-*   **Run:**
-    1.  Load Grove config to determine Context/Namespace.
-    2.  Init K8s Client.
-    3.  Generate Pod Spec (Name: `scion-<agent-id>`, Label: `scion-agent=<agent-id>`).
-    4.  Create Pod (EmptyDir for workspace).
-    5.  Wait for `Running` state.
-    6.  **Upload Context:** `tar` stream local dir -> Pod.
-    7.  **Exec Start:** Run agent start command.
-    8.  Update `.scion/agents/<id>/scion.json` with Pod details.
-*   **Sync:** Implement `scion sync` using `tar` stream Pod -> local dir.
-*   **Stop:**
-    1.  (Optional) Prompt for Sync.
-    2.  Delete Pod.
-    3.  Clean up local `.scion/agents/<id>/` state.
-*   **Attach:** Use `client-go/tools/remotecommand` with SPDY to attach to the main container's TTY.
 
 ## Future Work
 *   **Sidecar Syncing:** Integrate with tools like Mutagen for real-time bidirectional syncing.
