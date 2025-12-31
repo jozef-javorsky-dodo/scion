@@ -4,7 +4,7 @@
 Improve interactivity and persistence by optionally running the Gemini CLI within a `tmux` session inside the agent container. This allows users to detach and re-attach to the same interactive session without interrupting the agent's work. This is particularly required for the Apple Container runtime which does not support a native attach.
 
 ## Configuration
-Add `use_tmux` field to `scion.json`.
+Add `use_tmux` field to `scion-agent.json`.
 
 ```json
 {

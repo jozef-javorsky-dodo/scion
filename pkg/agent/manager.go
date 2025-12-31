@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/runtime"
@@ -43,9 +44,27 @@ func (m *AgentManager) Stop(ctx context.Context, agentID string) error {
 }
 
 func (m *AgentManager) Delete(ctx context.Context, agentID string, deleteFiles bool, grovePath string) error {
-	if err := m.Runtime.Delete(ctx, agentID); err != nil {
-		return err
+	// 1. Check if container exists
+	// We use name filter if possible, but runtime.List might take map[string]string
+	agents, err := m.Runtime.List(ctx, map[string]string{"scion.name": agentID})
+	containerExists := false
+	var targetID string
+	if err == nil {
+		for _, a := range agents {
+			if a.Name == agentID || a.ID == agentID || strings.TrimPrefix(a.Name, "/") == agentID {
+				containerExists = true
+				targetID = a.ID
+				break
+			}
+		}
 	}
+
+	if containerExists {
+		if err := m.Runtime.Delete(ctx, targetID); err != nil {
+			return fmt.Errorf("failed to delete container: %w", err)
+		}
+	}
+
 	if deleteFiles {
 		return DeleteAgentFiles(agentID, grovePath)
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/config"
+	"github.com/ptone/scion-agent/pkg/harness"
 	"github.com/ptone/scion-agent/pkg/util"
 )
 
@@ -45,14 +46,14 @@ func DeleteAgentFiles(agentName string, grovePath string) error {
 }
 
 func (m *AgentManager) Provision(ctx context.Context, opts api.StartOptions) (*api.ScionConfig, error) {
-	_, _, _, cfg, err := GetAgent(opts.Name, opts.Template, opts.Image, opts.GrovePath, "created")
+	_, _, _, cfg, err := GetAgent(ctx, opts.Name, opts.Template, opts.Image, opts.GrovePath, "created")
 	if err == nil {
-		_ = UpdateAgentConfig(opts.Name, opts.GrovePath, "created", m.Runtime.Name())
+		_ = UpdateAgentConfig(opts.Name, opts.GrovePath, "created", m.Runtime.Name(), opts.Profile)
 	}
 	return cfg, err
 }
 
-func ProvisionAgent(agentName string, templateName string, agentImage string, grovePath string, optionalStatus string) (string, string, *api.ScionConfig, error) {
+func ProvisionAgent(ctx context.Context, agentName string, templateName string, agentImage string, grovePath string, optionalStatus string) (string, string, *api.ScionConfig, error) {
 	// 1. Prepare agent directories
 	projectDir, err := config.GetResolvedProjectDir(grovePath)
 	if err != nil {
@@ -118,107 +119,71 @@ func ProvisionAgent(agentName string, templateName string, agentImage string, gr
 			return "", "", nil, fmt.Errorf("failed to copy template %s: %w", tpl.Name, err)
 		}
 
-		// Load scion.json from this template and merge it
+		// Load scion-agent.json from this template and merge it
 		tplCfg, err := tpl.LoadConfig()
 		if err == nil {
 			finalScionCfg = config.MergeScionConfig(finalScionCfg, tplCfg)
 		}
 	}
 
-	// Update agent-specific scion.json
+	// Update agent-specific scion-agent.json
 	if finalScionCfg == nil {
 		finalScionCfg = &api.ScionConfig{}
 	}
-	finalScionCfg.Template = templateName
-	finalScionCfg.Agent = &api.AgentConfig{
-		Grove: groveName,
-		Name:  agentName,
+	finalScionCfg.Info = &api.AgentInfo{
+		Grove:    groveName,
+		Name:     agentName,
+		Template: templateName,
 	}
 	if optionalStatus != "" {
-		finalScionCfg.Agent.Status = optionalStatus
+		finalScionCfg.Info.Status = optionalStatus
 	}
+	// Image and other fields will be resolved at runtime from settings,
+	// but we can persist the requested image if provided.
 	if agentImage != "" {
-		finalScionCfg.Image = agentImage
+		finalScionCfg.Info.Image = agentImage
 	}
 	agentCfgData, err := json.MarshalIndent(finalScionCfg, "", "  ")
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to marshal agent config: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(agentHome, "scion.json"), agentCfgData, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(agentDir, "scion-agent.json"), agentCfgData, 0644); err != nil {
 		return "", "", nil, fmt.Errorf("failed to write agent config: %w", err)
 	}
 
-	// Update .claude.json if it exists
-	if finalScionCfg.HarnessProvider == "claude" {
-		_ = UpdateClaudeJSON(agentName, agentHome, agentWorkspace)
+	// Write agent-info.json to home for container access
+	if finalScionCfg.Info != nil {
+		infoData, err := json.MarshalIndent(finalScionCfg.Info, "", "  ")
+		if err == nil {
+			_ = os.WriteFile(filepath.Join(agentHome, "agent-info.json"), infoData, 0644)
+		}
+	}
+
+	// 3. Harness provisioning
+	h := harness.New(finalScionCfg.Harness)
+	if err := h.Provision(ctx, agentName, agentHome, agentWorkspace); err != nil {
+		return "", "", nil, fmt.Errorf("harness provisioning failed: %w", err)
 	}
 
 	return agentHome, agentWorkspace, finalScionCfg, nil
 }
 
-func UpdateClaudeJSON(agentName, agentHome, agentWorkspace string) error {
-	claudeJSONPath := filepath.Join(agentHome, ".claude.json")
-	if _, err := os.Stat(claudeJSONPath); os.IsNotExist(err) {
-		return nil
-	}
-
-	data, err := os.ReadFile(claudeJSONPath)
+func GetSavedProfile(agentName string, grovePath string) string {
+	projectDir, err := config.GetResolvedProjectDir(grovePath)
 	if err != nil {
-		return err
+		return ""
 	}
-
-	var claudeCfg map[string]interface{}
-	if err := json.Unmarshal(data, &claudeCfg); err != nil {
-		return err
-	}
-
-	repoRoot, err := util.RepoRoot()
-	containerWorkspace := "/workspace"
-	if err == nil {
-		relWorkspace, err := filepath.Rel(repoRoot, agentWorkspace)
-		if err == nil && !strings.HasPrefix(relWorkspace, "..") {
-			containerWorkspace = filepath.Join("/repo-root", relWorkspace)
+	scionJSONPath := filepath.Join(projectDir, "agents", agentName, "scion-agent.json")
+	if _, err := os.Stat(scionJSONPath); err == nil {
+		data, err := os.ReadFile(scionJSONPath)
+		if err == nil {
+			var cfg api.ScionConfig
+			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
+				return cfg.Info.Profile
+			}
 		}
 	}
-
-	// Update projects map
-	projects, ok := claudeCfg["projects"].(map[string]interface{})
-	if !ok {
-		projects = make(map[string]interface{})
-		claudeCfg["projects"] = projects
-	}
-
-	var projectSettings interface{}
-	for _, v := range projects {
-		projectSettings = v
-		break
-	}
-
-	if projectSettings == nil {
-		projectSettings = map[string]interface{}{
-			"allowedTools":                            []interface{}{},
-			"mcpContextUris":                          []interface{}{},
-			"mcpServers":                              map[string]interface{}{},
-			"enabledMcpjsonServers":                  []interface{}{},
-			"disabledMcpjsonServers":                 []interface{}{},
-			"hasTrustDialogAccepted":                  false,
-			"projectOnboardingSeenCount":              1,
-			"hasClaudeMdExternalIncludesApproved":    false,
-			"hasClaudeMdExternalIncludesWarningShown": false,
-			"exampleFiles":                            []interface{}{},
-		}
-	}
-
-	newProjects := make(map[string]interface{})
-	newProjects[containerWorkspace] = projectSettings
-	claudeCfg["projects"] = newProjects
-
-	newData, err := json.MarshalIndent(claudeCfg, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(claudeJSONPath, newData, 0644)
+	return ""
 }
 
 func GetSavedRuntime(agentName string, grovePath string) string {
@@ -226,20 +191,20 @@ func GetSavedRuntime(agentName string, grovePath string) string {
 	if err != nil {
 		return ""
 	}
-	scionJSONPath := filepath.Join(projectDir, "agents", agentName, "home", "scion.json")
+	scionJSONPath := filepath.Join(projectDir, "agents", agentName, "scion-agent.json")
 	if _, err := os.Stat(scionJSONPath); err == nil {
 		data, err := os.ReadFile(scionJSONPath)
 		if err == nil {
 			var cfg api.ScionConfig
-			if err := json.Unmarshal(data, &cfg); err == nil {
-				return cfg.Runtime
+			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
+				return cfg.Info.Runtime
 			}
 		}
 	}
 	return ""
 }
 
-func UpdateAgentConfig(agentName string, grovePath string, status string, runtime string) error {
+func UpdateAgentConfig(agentName string, grovePath string, status string, runtime string, profile string) error {
 	projectDir, err := config.GetResolvedProjectDir(grovePath)
 	if err != nil {
 		return err
@@ -247,7 +212,8 @@ func UpdateAgentConfig(agentName string, grovePath string, status string, runtim
 	agentsDir := filepath.Join(projectDir, "agents")
 	agentDir := filepath.Join(agentsDir, agentName)
 	agentHome := filepath.Join(agentDir, "home")
-	scionJsonPath := filepath.Join(agentHome, "scion.json")
+	scionJsonPath := filepath.Join(agentDir, "scion-agent.json")
+	agentInfoPath := filepath.Join(agentHome, "agent-info.json")
 
 	if _, err := os.Stat(scionJsonPath); os.IsNotExist(err) {
 		return nil // Nothing to update
@@ -263,14 +229,17 @@ func UpdateAgentConfig(agentName string, grovePath string, status string, runtim
 		return err
 	}
 
-	if cfg.Agent == nil {
-		cfg.Agent = &api.AgentConfig{}
+	if cfg.Info == nil {
+		cfg.Info = &api.AgentInfo{}
 	}
 	if status != "" {
-		cfg.Agent.Status = status
+		cfg.Info.Status = status
 	}
 	if runtime != "" {
-		cfg.Runtime = runtime
+		cfg.Info.Runtime = runtime
+	}
+	if profile != "" {
+		cfg.Info.Profile = profile
 	}
 
 	newData, err := json.MarshalIndent(cfg, "", "  ")
@@ -278,10 +247,20 @@ func UpdateAgentConfig(agentName string, grovePath string, status string, runtim
 		return err
 	}
 
-	return os.WriteFile(scionJsonPath, newData, 0644)
+	if err := os.WriteFile(scionJsonPath, newData, 0644); err != nil {
+		return err
+	}
+
+	// Also update agent-info.json in home
+	infoData, err := json.MarshalIndent(cfg.Info, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(agentInfoPath, infoData, 0644)
+	}
+
+	return nil
 }
 
-func GetAgent(agentName string, templateName string, agentImage string, grovePath string, optionalStatus string) (string, string, string, *api.ScionConfig, error) {
+func GetAgent(ctx context.Context, agentName string, templateName string, agentImage string, grovePath string, optionalStatus string) (string, string, string, *api.ScionConfig, error) {
 	projectDir, err := config.GetResolvedProjectDir(grovePath)
 	if err != nil {
 		return "", "", "", nil, err
@@ -305,12 +284,12 @@ func GetAgent(agentName string, templateName string, agentImage string, grovePat
 		if templateName == "" {
 			templateName = defaultTemplate
 		}
-		home, ws, cfg, err := ProvisionAgent(agentName, templateName, agentImage, grovePath, optionalStatus)
+		home, ws, cfg, err := ProvisionAgent(ctx, agentName, templateName, agentImage, grovePath, optionalStatus)
 		return agentDir, home, ws, cfg, err
 	}
 
-	// Load the agent's scion.json
-	tpl := &config.Template{Path: agentHome}
+	// Load the agent's scion-agent.json from agent root
+	tpl := &config.Template{Path: agentDir}
 	agentCfg, err := tpl.LoadConfig()
 	if err != nil {
 		return agentDir, agentHome, agentWorkspace, nil, fmt.Errorf("failed to load agent config: %w", err)
@@ -318,8 +297,8 @@ func GetAgent(agentName string, templateName string, agentImage string, grovePat
 
 	// Re-construct the full config by merging the template chain
 	effectiveTemplate := defaultTemplate
-	if agentCfg.Template != "" {
-		effectiveTemplate = agentCfg.Template
+	if agentCfg.Info != nil && agentCfg.Info.Template != "" {
+		effectiveTemplate = agentCfg.Info.Template
 	}
 
 	chain, err := config.GetTemplateChain(effectiveTemplate)
@@ -339,3 +318,4 @@ func GetAgent(agentName string, templateName string, agentImage string, grovePat
 
 	return agentDir, agentHome, agentWorkspace, finalCfg, nil
 }
+

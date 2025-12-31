@@ -128,7 +128,7 @@ func TestBuildCommonRunArgs(t *testing.T) {
 					VertexAPIKey:       "vertex-123",
 					GoogleCloudProject: "my-project",
 				},
-				Model: "gemini-1.5-pro",
+				Env:   []string{"GEMINI_MODEL=gemini-1.5-pro"},
 				Image: "scion-agent:latest",
 			},
 			wantIn: []string{
@@ -224,6 +224,23 @@ func TestBuildCommonRunArgs(t *testing.T) {
 			wantIn: []string{
 				"-v /host/path:/container/path:ro",
 				"-v /host/data:/container/data",
+			},
+		},
+		{
+			name: "volume expansion",
+			config: RunConfig{
+				Harness:      &harness.GeminiCLI{},
+				UnixUsername: "scion",
+				Volumes: []api.VolumeMount{
+					{Source: "~/.config/gcloud", Target: "~/.config/gcloud", ReadOnly: true},
+				},
+				Image: "scion-agent:latest",
+			},
+			wantIn: []string{
+				fmt.Sprintf("-v %s/.config/gcloud:/home/scion/.config/gcloud:ro", func() string {
+					h, _ := os.UserHomeDir()
+					return h
+				}()),
 			},
 		},
 	}

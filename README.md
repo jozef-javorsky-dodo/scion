@@ -15,14 +15,14 @@ Ensure that your `$GOPATH/bin` is in your system `$PATH`.
 ## Concepts
 
 - **Agent**: An isolated container running an LLM-driven task. Each agent has its own home directory, workspace, and credentials.
-- **Grove**: A "grove" is a project workspace where agents live. It corresponds to a `.scion` directory which contains agent configurations and templates. When initialized, it includes default templates for supported providers (`gemini`, `claude`).
+- **Grove**: A "grove" is a project workspace where agents live. It corresponds to a `.scion` directory which contains agent configurations and templates. When initialized, it includes default templates for supported harnesses (`gemini`, `claude`).
 - **Template**: A blueprint for an agent, defining its base configuration, system prompt, and tools.
 
 ## Quick Start
 
 ### 1. Initialize a Grove
 
-Navigate to your project root and initialize a new Scion grove. This creates the `.scion` directory structure and seeds default templates for supported providers (e.g., Gemini and Claude).
+Navigate to your project root and initialize a new Scion grove. This creates the `.scion` directory structure and seeds default templates for supported harnesses (e.g., Gemini and Claude).
 
 ```bash
 cd my-project
@@ -61,7 +61,7 @@ The `create` command allows you to provision an agent's directory structure with
    Navigate to the agent's home directory to edit its configuration, system prompt, or provided tools:
    ```bash
    cd .scion/agents/my-agent/home
-   # Edit scion.json, .gemini/system_prompt.md, etc.
+   # Edit scion-agent.json, .gemini/system_prompt.md, etc.
    ```
 
 3. **Start the agent:**

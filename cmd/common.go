@@ -16,16 +16,22 @@ var (
 	agentImage   string
 	noAuth       bool
 	attach       bool
-	model        string
-	agentRuntime string
 )
 
 func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 	agentName := args[0]
 	task := strings.Join(args[1:], " ")
 
-	effectiveRuntime := agentRuntime
+	effectiveProfile := profile
+	if effectiveProfile == "" {
+		// If no profile flag, check if we have a saved profile for this agent
+		effectiveProfile = agent.GetSavedProfile(agentName, grovePath)
+	}
+
+	effectiveRuntime := effectiveProfile
 	if effectiveRuntime == "" {
+		// If still no profile, we'll let GetRuntime handle auto-detection
+		// but we might want to check for saved runtime as fallback
 		effectiveRuntime = agent.GetSavedRuntime(agentName, grovePath)
 	}
 
@@ -45,10 +51,10 @@ func RunAgent(cmd *cobra.Command, args []string, resume bool) error {
 		Name:      agentName,
 		Task:      task,
 		Template:  templateName,
+		Profile:   effectiveProfile,
 		Image:     resolvedImage,
 		GrovePath: grovePath,
 		Resume:    resume,
-		Model:     model,
 		Detached:  detached,
 		NoAuth:    noAuth,
 	}

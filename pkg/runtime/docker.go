@@ -12,6 +12,7 @@ import (
 
 type DockerRuntime struct {
 	Command string
+	Host    string
 }
 
 func NewDockerRuntime() *DockerRuntime {
@@ -99,15 +100,17 @@ func (r *DockerRuntime) List(ctx context.Context, labelFilter map[string]string)
 
 		if match {
 			agents = append(agents, api.AgentInfo{
-				ID:          d.ID,
-				Name:        d.Names,
-				Status:      d.Status,
-				Image:       d.Image,
-				Labels:      labels,
-				Annotations: labels,
+				ID:              d.ID,
+				Name:            d.Names,
+				ContainerStatus: d.Status,
+				Status:          "created", // Default status, updated by AgentManager logic
+				Image:           d.Image,
+				Labels:          labels,
+				Annotations:     labels,
 				Template:    labels["scion.template"],
 				Grove:       labels["scion.grove"],
 				GrovePath:   labels["scion.grove_path"],
+				Runtime:     r.Name(),
 			})
 		}
 	}

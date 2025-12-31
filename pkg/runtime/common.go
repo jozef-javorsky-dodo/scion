@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/util"
 )
 
 // buildCommonRunArgs constructs the common arguments for 'run' command across different runtimes.
@@ -24,8 +25,28 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 			addArg("-e", fmt.Sprintf("%s=%s", name, value))
 		}
 	}
+
+	hostHome, _ := os.UserHomeDir()
+	expandPath := func(path string, isTarget bool) string {
+		if strings.HasPrefix(path, "~/") {
+			if isTarget {
+				return filepath.Join(util.GetHomeDir(config.UnixUsername), path[2:])
+			}
+			return filepath.Join(hostHome, path[2:])
+		}
+		if path == "~" {
+			if isTarget {
+				return util.GetHomeDir(config.UnixUsername)
+			}
+			return hostHome
+		}
+		return path
+	}
+
 	addVolume := func(v api.VolumeMount) {
-		val := fmt.Sprintf("%s:%s", v.Source, v.Target)
+		src := expandPath(v.Source, false)
+		tgt := expandPath(v.Target, true)
+		val := fmt.Sprintf("%s:%s", src, tgt)
 		if v.ReadOnly {
 			val += ":ro"
 		}
@@ -35,7 +56,7 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 	addArg("--name", config.Name)
 
 	if config.HomeDir != "" {
-		addArg("-v", fmt.Sprintf("%s:/home/%s", config.HomeDir, config.UnixUsername))
+		addArg("-v", fmt.Sprintf("%s:%s", config.HomeDir, util.GetHomeDir(config.UnixUsername)))
 	}
 	if config.RepoRoot != "" && config.Workspace != "" {
 		relWorkspace, err := filepath.Rel(config.RepoRoot, config.Workspace)
@@ -72,7 +93,7 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 				addVolume(v)
 			}
 		}
-		for k, v := range config.Harness.GetEnv(config.Name, config.UnixUsername, config.Model, config.Auth) {
+		for k, v := range config.Harness.GetEnv(config.Name, config.UnixUsername, config.Auth) {
 			addEnv(k, v)
 		}
 	}
@@ -110,7 +131,7 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 	// Get command from harness
 	var harnessArgs []string
 	if config.Harness != nil {
-		harnessArgs = config.Harness.GetCommand(config.Task, config.Resume)
+		harnessArgs = config.Harness.GetCommand(config.Task, config.Resume, config.CommandArgs)
 	} else {
 		return nil, fmt.Errorf("no harness provided")
 	}

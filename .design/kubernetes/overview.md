@@ -7,7 +7,7 @@ This document outlines the design for adding a Kubernetes (K8s) runtime to the `
 - Allow `scion run` to execute agents in a Kubernetes cluster.
 - Maintain a developer experience (DX) as close as possible to the local `docker` runtime.
 - Support "Agent Sandbox" technologies for secure execution.
-- Solve the challenges of remote file system access and user identity using the unified Harness Provider abstraction.
+- Solve the challenges of remote file system access and user identity using the unified Harness abstraction.
 - Support a single 'grove' (project) utilizing a mix of local and remote agents.
 
 ## Architecture
@@ -52,7 +52,7 @@ The `KubernetesRuntime` will rely on the `harness.Harness` interface to discover
 
 *   **Auth Discovery:** The runtime will call `Harness.DiscoverAuth(agentHome)` to identify necessary credentials (e.g., API keys, default credentials).
 *   **Environment:** `Harness.GetEnv` will provide necessary environment variables (including API keys), which will be injected into the Pod definition.
-*   **Volume Projection:** The runtime will iterate over volumes returned by `Harness.GetVolumes` and those defined in `scion.json`.
+*   **Volume Projection:** The runtime will iterate over volumes returned by `Harness.GetVolumes` and those defined in `scion-agent.json`.
     *   **Mechanism:** For **local files** (e.g., `~/.config/gcloud`, `~/.anthropic`), the CLI will create ephemeral **Kubernetes Secrets** containing these files and mount them into the Pod at the target locations.
     *   *Note:* Care must be taken with large directories. For MVP, we may restrict support to small credential files.
 
@@ -67,8 +67,8 @@ Even though agents run remotely, their "handle" must remain local to maintain a 
 ### Directory Structure
 We will retain the `.scion/agents/<agent-name>/` directory for every agent, regardless of runtime.
 
-*   **`.scion/agents/<agent-name>/scion.json`**:
-    *   **`harness_provider`**: `"claude-code"` (or `"gemini-cli"`)
+*   **`.scion/agents/<agent-name>/scion-agent.json`**:
+    *   **`harness`**: `"claude-code"` (or `"gemini-cli"`)
     *   **`runtime`**: `"kubernetes"`
     *   **`kubernetes`**: (Read-only metadata)
         *   `cluster`: "my-cluster-context"
@@ -107,14 +107,14 @@ To ensure maximum flexibility, the choice between `docker` and `kubernetes` runt
 
 ### Resolution Hierarchy (Precedence)
 1.  **Command-line Flag:** `scion run --runtime kubernetes` (One-time override).
-2.  **Agent State:** `.scion/agents/<name>/scion.json` (Locked to the runtime chosen at creation).
-3.  **Template Config:** `templates/<name>/scion.json` (Specific to an agent type/requirement).
+2.  **Agent State:** `.scion/agents/<name>/scion-agent.json` (Locked to the runtime chosen at creation).
+3.  **Template Config:** `templates/<name>/scion-agent.json` (Specific to an agent type/requirement).
 4.  **Grove (Project) Preference:** `.scion/settings.json` (Project-wide defaults).
 5.  **Global Preference:** `~/.scion/settings.json` (User-wide defaults).
 6.  **Default:** `docker`.
 
 ### Sticky Runtimes
-Once an agent is created, its runtime is **immutable** and stored in its local `scion.json`. Subsequent `start`, `stop`, or `attach` commands will always use the runtime specified in the agent's state, regardless of changes to global or grove settings.
+Once an agent is created, its runtime is **immutable** and stored in its local `scion-agent.json`. Subsequent `start`, `stop`, or `attach` commands will always use the runtime specified in the agent's state, regardless of changes to global or grove settings.
 
 ## Implementation Plan
 
@@ -123,7 +123,7 @@ The implementation will build upon the `Runtime` interface and the new `Harness`
 ### 1. Kubernetes Runtime Construction
 Create `pkg/runtime/kubernetes` and implement the `Runtime` interface.
 *   **`Run(ctx, config)`**:
-    *   **Harness Initialization:** Use `config.Harness` to determine provider specifics.
+    *   **Harness Initialization:** Use `config.Harness` to determine harness specifics.
     *   **PodSpec Generation:**
         *   **Image**: Use `config.Image`.
         *   **Command**: Use `config.Harness.GetCommand(config.Task, config.Resume)`.

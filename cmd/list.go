@@ -22,7 +22,7 @@ var listCmd = &cobra.Command{
 	Aliases: []string{"ls"},
 	Short:   "List running scion agents",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		rt := runtime.GetRuntime(grovePath, agentRuntime)
+		rt := runtime.GetRuntime(grovePath, profile)
 		mgr := agent.NewManager(rt)
 
 		filters := map[string]string{
@@ -55,17 +55,17 @@ var listCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tTEMPLATE\tGROVE\tAGENT STATUS\tCONTAINER")
+		fmt.Fprintln(w, "NAME\tTEMPLATE\tRUNTIME\tGROVE\tAGENT STATUS\tCONTAINER")
 		for _, a := range agents {
-			agentStatus := a.AgentStatus
+			agentStatus := a.Status
 			if agentStatus == "" {
 				agentStatus = "IDLE"
 			}
-			containerStatus := a.Status
+			containerStatus := a.ContainerStatus
 			if containerStatus == "created" && a.ID == "" {
 				containerStatus = "none"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", a.Name, a.Template, a.Grove, agentStatus, containerStatus)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", a.Name, a.Template, a.Runtime, a.Grove, agentStatus, containerStatus)
 		}
 		w.Flush()
 		return nil
@@ -75,6 +75,5 @@ var listCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(listCmd)
 	listCmd.Flags().BoolVarP(&listAll, "all", "a", false, "List all agents across all groves")
-	listCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "", "Runtime to use (local, remote, docker, kubernetes)")
 }
 

@@ -89,7 +89,7 @@ func (r *KubernetesRuntime) buildPod(namespace string, config RunConfig) *corev1
 	// Command Resolution
 	var cmd []string
 	if config.Harness != nil {
-		cmd = config.Harness.GetCommand(config.Task, config.Resume)
+		cmd = config.Harness.GetCommand(config.Task, config.Resume, config.CommandArgs)
 	} else {
 		// Fallback if no harness (though RunConfig implies there should be one or defaults)
 		cmd = []string{"/bin/sh", "-c", "sleep infinity"}
@@ -356,16 +356,17 @@ func (r *KubernetesRuntime) List(ctx context.Context, labelFilter map[string]str
 		}
 
 		agents = append(agents, api.AgentInfo{
-			ID:          p.Name,
-			Name:        p.Labels["scion.name"],
-			Template:    p.Labels["scion.template"],
-			Grove:       p.Labels["scion.grove"],
-			GrovePath:   grovePath,
-			Labels:      p.Labels,
-			Annotations: p.Annotations,
-			Status:      status,
-			AgentStatus: agentStatus,
-			Image:       p.Spec.Containers[0].Image,
+			ID:              p.Name,
+			Name:            p.Labels["scion.name"],
+			Template:        p.Labels["scion.template"],
+			Grove:           p.Labels["scion.grove"],
+			GrovePath:       grovePath,
+			Labels:          p.Labels,
+			Annotations:     p.Annotations,
+			ContainerStatus: status,
+			Status:          agentStatus,
+			Image:           p.Spec.Containers[0].Image,
+			Runtime:         r.Name(),
 		})
 	}
 	return agents, nil

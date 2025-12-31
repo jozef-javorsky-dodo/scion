@@ -1,12 +1,12 @@
 # Alternative Settings Architectures
 
-This document explores three alternative approaches to configuration to address the complexity of intersecting concerns (Runtime x Provider x Feature Flags).
+This document explores three alternative approaches to configuration to address the complexity of intersecting concerns (Runtime x Harness x Feature Flags).
 
 ## Option 1: The "Flat Registry" Model (Relational)
 
-In this model, we treat `Runtimes`, `Providers`, and `Profiles` as top-level, independent entities. A `Profile` acts as the "glue" that binds a specific Runtime to specific Provider overrides.
+In this model, we treat `Runtimes`, `Harnesss`, and `Profiles` as top-level, independent entities. A `Profile` acts as the "glue" that binds a specific Runtime to specific Harness overrides.
 
-**Concept**: "Normalize" the data. Don't nest Runtimes inside Environments or Providers inside Runtimes. Reference them by name.
+**Concept**: "Normalize" the data. Don't nest Runtimes inside Environments or Harnesss inside Runtimes. Reference them by name.
 
 ### JSON Schema Draft
 
@@ -19,7 +19,7 @@ In this model, we treat `Runtimes`, `Providers`, and `Profiles` as top-level, in
     "k8s-prod": { "type": "kubernetes", "context": "..." }
   },
 
-  "providers": {
+  "harnesss": {
     "gemini": { "image": "gemini-cli:base", "user": "root" },
     "claude": { "image": "claude-code:base", "user": "node" }
   },
@@ -44,16 +44,16 @@ In this model, we treat `Runtimes`, `Providers`, and `Profiles` as top-level, in
 ```
 
 ### Pros/Cons
-- **Pros**: Very clean separation of concerns. Easy to add a new runtime without touching provider configs. Reduces duplication.
+- **Pros**: Very clean separation of concerns. Easy to add a new runtime without touching harness configs. Reduces duplication.
 - **Cons**: Requires "lookups" (referencing names). Slightly more verbose for simple setups.
 
 ---
 
-## Option 2: The "Provider-Centric" Model (App-Focused)
+## Option 2: The "Harness-Centric" Model (App-Focused)
 
-This flips the previous design. Instead of defining the "Environment" and listing what runs in it, you define the "Agent/Provider" and list how it behaves in different environments.
+This flips the previous design. Instead of defining the "Environment" and listing what runs in it, you define the "Agent/Harness" and list how it behaves in different environments.
 
-**Concept**: The Provider is the primary entity. It knows how to adapt itself to different runtimes.
+**Concept**: The Harness is the primary entity. It knows how to adapt itself to different runtimes.
 
 ### JSON Schema Draft
 
@@ -68,7 +68,7 @@ This flips the previous design. Instead of defining the "Environment" and listin
     "k8s": { ... }
   },
 
-  "providers": {
+  "harnesss": {
     "gemini": {
       "user": "root",
       "defaults": { "image": "gemini-cli:latest" },
@@ -91,7 +91,7 @@ This flips the previous design. Instead of defining the "Environment" and listin
 
 ### Pros/Cons
 - **Pros**: extremely clear if your mental model is "I want to configure Gemini". All Gemini logic is in one place.
-- **Cons**: If you have 10 providers and change your K8s cluster details, you might have to update 10 adapters if not careful (though referencing a global runtime block helps).
+- **Cons**: If you have 10 harnesss and change your K8s cluster details, you might have to update 10 adapters if not careful (though referencing a global runtime block helps).
 
 ---
 
@@ -110,7 +110,7 @@ This approach mimics tools like `kubectl` or `helm`. You have a "Base" configura
   "base": {
     "runtime": "docker",
     "use_tmux": true,
-    "providers": {
+    "harnesss": {
       "gemini": { "image": "gemini:latest", "user": "root" }
     }
   },
@@ -120,8 +120,8 @@ This approach mimics tools like `kubectl` or `helm`. You have a "Base" configura
       "runtime": "kubernetes",
       "runtime_config": { "context": "minikube" },
       "use_tmux": false,
-      // Merged into base providers
-      "provider_patches": {
+      // Merged into base harnesss
+      "harness_patches": {
         "gemini": { "image": "gemini:k8s-optimized" }
       }
     },
@@ -142,5 +142,5 @@ This approach mimics tools like `kubectl` or `helm`. You have a "Base" configura
 
 **Option 1 (Flat Registry)** seems to strike the best balance for this project.
 1.  It avoids the deep nesting of the original proposal.
-2.  It decouples "Infrastructure" (Runtimes) from "Software" (Providers).
+2.  It decouples "Infrastructure" (Runtimes) from "Software" (Harnesss).
 3.  The `Profile` concept cleanly handles the "intersection" logic (e.g., "In this profile, tmux is on, and Gemini uses this image") without scattering it.

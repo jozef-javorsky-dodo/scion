@@ -65,8 +65,8 @@ func TestKubernetesRuntime_List(t *testing.T) {
 		t.Errorf("expected ID test-agent, got %s", agents[0].ID)
 	}
 
-	if agents[0].Status != "Running" {
-		t.Errorf("expected status Running, got %s", agents[0].Status)
+	if agents[0].ContainerStatus != "Running" {
+		t.Errorf("expected container status Running, got %s", agents[0].ContainerStatus)
 	}
 
 	if agents[0].Image != "test-image" {

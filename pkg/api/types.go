@@ -4,13 +4,6 @@ import (
 	"context"
 )
 
-type AgentConfig struct {
-	Grove      string            `json:"grove"`
-	Name       string            `json:"name"`
-	Status     string            `json:"status,omitempty"`
-	Kubernetes *AgentK8sMetadata `json:"kubernetes,omitempty"`
-}
-
 type AgentK8sMetadata struct {
 	Cluster   string `json:"cluster"`
 	Namespace string `json:"namespace"`
@@ -37,19 +30,16 @@ type K8sResources struct {
 }
 
 type ScionConfig struct {
-	Template        string            `json:"template"`
-	HarnessProvider string            `json:"harness_provider,omitempty"`
-	ConfigDir       string            `json:"config_dir,omitempty"`
-	Env             map[string]string `json:"env,omitempty"`
-	Volumes         []VolumeMount     `json:"volumes,omitempty"`
-	UnixUsername    string            `json:"unix_username"`
-	Image           string            `json:"image"`
-	Detached        *bool             `json:"detached"`
-	UseTmux         *bool             `json:"use_tmux"`
-	Model           string            `json:"model"`
-	Runtime         string            `json:"runtime,omitempty"`
-	Kubernetes      *KubernetesConfig `json:"kubernetes,omitempty"`
-	Agent           *AgentConfig      `json:"agent,omitempty"`
+	Harness     string            `json:"harness,omitempty"`
+	ConfigDir   string            `json:"config_dir,omitempty"`
+	Env         map[string]string `json:"env,omitempty"`
+	Volumes     []VolumeMount     `json:"volumes,omitempty"`
+	Detached    *bool             `json:"detached"`
+	CommandArgs []string          `json:"command_args,omitempty"`
+	Kubernetes  *KubernetesConfig `json:"kubernetes,omitempty"`
+
+	// Info contains persisted metadata about the agent
+	Info *AgentInfo `json:"info,omitempty"`
 }
 
 func (c *ScionConfig) IsDetached() bool {
@@ -57,13 +47,6 @@ func (c *ScionConfig) IsDetached() bool {
 		return true
 	}
 	return *c.Detached
-}
-
-func (c *ScionConfig) IsUseTmux() bool {
-	if c.UseTmux == nil {
-		return false
-	}
-	return *c.UseTmux
 }
 
 type AuthConfig struct {
@@ -81,36 +64,39 @@ type AuthProvider interface {
 }
 
 type AgentInfo struct {
-	ID          string
-	Name        string
-	Template    string
-	Grove       string
-	GrovePath   string
-	Labels      map[string]string
-	Annotations map[string]string
-	Status      string // Container status
-	AgentStatus string // Scion agent high-level status
-	Image       string
-	Detached    bool
+	ID          string            `json:"id,omitempty"`
+	Name        string            `json:"name"`
+	Template    string            `json:"template"`
+	Grove       string            `json:"grove"`
+	GrovePath   string            `json:"grovePath,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+	ContainerStatus string        `json:"containerStatus,omitempty"` // Container status (e.g., Up 2 hours)
+	Status      string            `json:"status,omitempty"`          // Scion agent high-level status (e.g., running, stopped)
+	Image       string            `json:"image,omitempty"`
+	Detached    bool              `json:"detached,omitempty"`
+	Runtime     string            `json:"runtime,omitempty"`
+	Profile     string            `json:"profile,omitempty"`
+	Kubernetes  *AgentK8sMetadata `json:"kubernetes,omitempty"`
 }
 
 type StartOptions struct {
 	Name      string
 	Task      string
 	Template  string
+	Profile   string
 	Image     string
 	GrovePath string
 	Env       map[string]string
 	Detached  *bool
 	Resume    bool
-	Model     string
 	Auth      AuthProvider
 	NoAuth    bool
 }
 
 type StatusEvent struct {
-	AgentID   string    `json:"agent_id"`
-	Status    string    `json:"status"`
-	Message   string    `json:"message,omitempty"`
-	Timestamp string    `json:"timestamp"`
+	AgentID   string `json:"agent_id"`
+	Status    string `json:"status"`
+	Message   string `json:"message,omitempty"`
+	Timestamp string `json:"timestamp"`
 }

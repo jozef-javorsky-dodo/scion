@@ -49,8 +49,23 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 	}
 
 	runningNames := make(map[string]bool)
-	for _, a := range agents {
-		runningNames[a.Name] = true
+	for i := range agents {
+		runningNames[agents[i].Name] = true
+		if agents[i].GrovePath != "" {
+			scionJSON := filepath.Join(agents[i].GrovePath, "agents", agents[i].Name, "scion-agent.json")
+			if data, err := os.ReadFile(scionJSON); err == nil {
+				var cfg api.ScionConfig
+				if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
+					agents[i].Status = cfg.Info.Status
+					if agents[i].Runtime == "" {
+						agents[i].Runtime = cfg.Info.Runtime
+					}
+					if agents[i].Profile == "" {
+						agents[i].Profile = cfg.Info.Profile
+					}
+				}
+			}
+		}
 	}
 
 	for _, gp := range grovesToScan {
@@ -68,22 +83,24 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 				continue
 			}
 
-			// Check scion.json
-			agentScionJSON := filepath.Join(agentsDir, e.Name(), "home", "scion.json")
+			// Check scion-agent.json
+			agentScionJSON := filepath.Join(agentsDir, e.Name(), "scion-agent.json")
 			data, err := os.ReadFile(agentScionJSON)
 			if err != nil {
 				continue
 			}
 			var cfg api.ScionConfig
-			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Agent != nil {
+			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
 				agents = append(agents, api.AgentInfo{
-					Name:      e.Name(),
-					Template:  cfg.Template,
-					Grove:     groveName,
-					GrovePath: gp,
-					Status:    "created",
-					Image:     cfg.Image,
-					AgentStatus: cfg.Agent.Status,
+					Name:            e.Name(),
+					Template:        cfg.Info.Template,
+					Grove:           groveName,
+					GrovePath:       gp,
+					ContainerStatus: "created",
+					Image:           cfg.Info.Image,
+					Status:          cfg.Info.Status,
+					Runtime:         cfg.Info.Runtime,
+					Profile:         cfg.Info.Profile,
 				})
 			}
 		}

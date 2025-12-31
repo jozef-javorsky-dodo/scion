@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ptone/scion-agent/pkg/agent"
 	"github.com/ptone/scion-agent/pkg/runtime"
@@ -19,12 +20,12 @@ var deleteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentName := args[0]
 
-		effectiveRuntime := agentRuntime
-		if effectiveRuntime == "" {
-			effectiveRuntime = agent.GetSavedRuntime(agentName, grovePath)
+		effectiveProfile := profile
+		if effectiveProfile == "" {
+			effectiveProfile = agent.GetSavedRuntime(agentName, grovePath)
 		}
 
-		rt := runtime.GetRuntime(grovePath, effectiveRuntime)
+		rt := runtime.GetRuntime(grovePath, effectiveProfile)
 		mgr := agent.NewManager(rt)
 
 
@@ -32,6 +33,20 @@ var deleteCmd = &cobra.Command{
 		
 		// Try to stop first, ignore error if already stopped
 		_ = mgr.Stop(context.Background(), agentName)
+
+		// We check if it exists in List to provide better feedback
+		agents, _ := mgr.List(context.Background(), map[string]string{"scion.name": agentName})
+		containerFound := false
+		for _, a := range agents {
+			if a.Name == agentName || a.ID == agentName || strings.TrimPrefix(a.Name, "/") == agentName {
+				containerFound = true
+				break
+			}
+		}
+
+		if !containerFound {
+			fmt.Println("No container found, removing agent definition...")
+		}
 
 		if err := mgr.Delete(context.Background(), agentName, true, grovePath); err != nil {
 			return err
@@ -44,6 +59,5 @@ var deleteCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
-	deleteCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "", "Runtime to use (local, remote, docker, kubernetes)")
 }
 

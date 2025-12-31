@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ func (g *Generic) DiscoverAuth(agentHome string) api.AuthConfig {
 	if agentSettings, err := config.LoadAgentSettings(agentSettingsPath); err == nil {
 		if auth.GeminiAPIKey == "" && auth.GoogleAPIKey == "" && agentSettings.ApiKey != "" {
 			// Determine where to put the API key.
-			// Since we don't know the provider, we might not be able to assign it correctly
+			// Since we don't know the harness, we might not be able to assign it correctly
 			// if it's not one of the known ones.
 			// However, AgentSettings struct is somewhat tailored to Gemini currently.
 			// We'll leave it as is for now or maybe try to guess?
@@ -57,14 +58,10 @@ func (g *Generic) DiscoverAuth(agentHome string) api.AuthConfig {
 	return auth
 }
 
-func (g *Generic) GetEnv(agentName string, unixUsername string, model string, auth api.AuthConfig) map[string]string {
+func (g *Generic) GetEnv(agentName string, unixUsername string, auth api.AuthConfig) map[string]string {
 	env := make(map[string]string)
 
 	env["SCION_AGENT_NAME"] = agentName
-
-	if model != "" {
-		env["SCION_MODEL"] = model
-	}
 
 	// Map AuthConfig back to standard env vars
 	if auth.AnthropicAPIKey != "" {
@@ -84,7 +81,7 @@ func (g *Generic) GetEnv(agentName string, unixUsername string, model string, au
 	}
 
 	if auth.GoogleAppCredentials != "" {
-		env["GOOGLE_APPLICATION_CREDENTIALS"] = fmt.Sprintf("/home/%s/.config/gcp/application_default_credentials.json", unixUsername)
+		env["GOOGLE_APPLICATION_CREDENTIALS"] = fmt.Sprintf("%s/.config/gcp/application_default_credentials.json", util.GetHomeDir(unixUsername))
 	}
 
 	// We don't set GEMINI_DEFAULT_AUTH_TYPE as that is vendor specific
@@ -92,11 +89,12 @@ func (g *Generic) GetEnv(agentName string, unixUsername string, model string, au
 	return env
 }
 
-func (g *Generic) GetCommand(task string, resume bool) []string {
+func (g *Generic) GetCommand(task string, resume bool, baseArgs []string) []string {
+	args := append([]string{}, baseArgs...)
 	if task != "" {
-		return []string{task}
+		args = append(args, task)
 	}
-	return []string{}
+	return args
 }
 
 func (g *Generic) PropagateFiles(homeDir, unixUsername string, auth api.AuthConfig) error {
@@ -132,14 +130,14 @@ func (g *Generic) GetVolumes(unixUsername string, auth api.AuthConfig) []api.Vol
 	if auth.OAuthCreds != "" {
 		volumes = append(volumes, api.VolumeMount{
 			Source:   auth.OAuthCreds,
-			Target:   fmt.Sprintf("/home/%s/%s/oauth_creds.json", unixUsername, g.DefaultConfigDir()),
+			Target:   fmt.Sprintf("%s/%s/oauth_creds.json", util.GetHomeDir(unixUsername), g.DefaultConfigDir()),
 			ReadOnly: true,
 		})
 	}
 	if auth.GoogleAppCredentials != "" {
 		volumes = append(volumes, api.VolumeMount{
 			Source:   auth.GoogleAppCredentials,
-			Target:   fmt.Sprintf("/home/%s/.config/gcp/application_default_credentials.json", unixUsername),
+			Target:   fmt.Sprintf("%s/.config/gcp/application_default_credentials.json", util.GetHomeDir(unixUsername)),
 			ReadOnly: true,
 		})
 	}
@@ -152,4 +150,12 @@ func (g *Generic) DefaultConfigDir() string {
 
 func (g *Generic) HasSystemPrompt() bool {
 	return false
+}
+
+func (g *Generic) Provision(ctx context.Context, agentName, agentHome, agentWorkspace string) error {
+	return nil
+}
+
+func (g *Generic) GetEmbedDir() string {
+	return ""
 }

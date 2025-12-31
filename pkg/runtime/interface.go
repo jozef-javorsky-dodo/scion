@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/ptone/scion-agent/pkg/api"
-	"github.com/ptone/scion-agent/pkg/harness"
 )
 
 type RunConfig struct {
@@ -20,10 +19,10 @@ type RunConfig struct {
 	Labels       map[string]string
 	Annotations  map[string]string
 	Auth         api.AuthConfig
-	Harness      harness.Harness
+	Harness      api.Harness
 	UseTmux      bool
-	Model        string
 	Task         string
+	CommandArgs  []string
 	Resume       bool
 }
 

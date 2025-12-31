@@ -13,23 +13,45 @@ import (
 
 // GetRuntime returns the appropriate Runtime implementation based on environment,
 // agent configuration (if available via GetAgentSettings), and grove/global settings.
-func GetRuntime(grovePath string, runtimeOverride string) Runtime {
-	var runtimeType string
-
-	// We resolve the project dir from grovePath to load settings correctly
-	// If grovePath is empty, GetResolvedProjectDir handles it by looking for .scion or falling back to global
+func GetRuntime(grovePath string, profileName string) Runtime {
 	projectDir, _ := config.GetResolvedProjectDir(grovePath)
 	s, _ := config.LoadSettings(projectDir)
 
-	if runtimeOverride != "" {
-		runtimeType = runtimeOverride
-	} else if s != nil && s.DefaultRuntime != "" {
-		runtimeType = s.DefaultRuntime
+	var rtConfig config.RuntimeConfig
+	var runtimeType string
+
+	if s != nil {
+		var err error
+		var rtName string
+		rtConfig, rtName, err = s.ResolveRuntime(profileName)
+		if err != nil {
+			// If profile resolution fails, we might be passed a direct runtime type
+			// Fallback to legacy behavior for now if profileName matches a known type
+			if profileName == "docker" || profileName == "kubernetes" || profileName == "k8s" || profileName == "container" || profileName == "remote" || profileName == "local" {
+				runtimeType = profileName
+			} else {
+				// Final fallback to auto-detection
+				runtimeType = "auto"
+			}
+		} else {
+			runtimeType = rtName
+		}
+	} else {
+		runtimeType = "auto"
 	}
 
-	if runtimeType == "local" {
+	// Normalize runtime names
+	if runtimeType == "remote" {
+		runtimeType = "kubernetes"
+	}
+
+	if runtimeType == "local" || runtimeType == "auto" {
 		if runtime.GOOS == "darwin" {
-			runtimeType = "container"
+			if _, err := exec.LookPath("container"); err == nil {
+				runtimeType = "container"
+			} else {
+				runtimeType = "docker"
+			}
 		} else {
 			runtimeType = "docker"
 		}
@@ -43,34 +65,28 @@ func GetRuntime(grovePath string, runtimeOverride string) Runtime {
 	case "container":
 		return NewAppleContainerRuntime()
 	case "docker":
-		return NewDockerRuntime()
+		dr := NewDockerRuntime()
+		if rtConfig.Host != "" {
+			dr.Host = rtConfig.Host
+		}
+		return dr
 	case "kubernetes", "k8s":
 		k8sClient, err := k8s.NewClient(os.Getenv("KUBECONFIG"))
 		if err != nil {
 			return &ErrorRuntime{Err: err}
 		}
 		rt := NewKubernetesRuntime(k8sClient)
-		if s != nil && s.Kubernetes.DefaultNamespace != "" {
-			rt.DefaultNamespace = s.Kubernetes.DefaultNamespace
+		if rtConfig.Context != "" {
+			// Need to support context switching in k8s client
+		}
+		if rtConfig.Namespace != "" {
+			rt.DefaultNamespace = rtConfig.Namespace
 		}
 		return rt
-	case "true":
-		// Fall through to auto-detection
 	}
 
-	// Auto-detection: check for available runtimes
-	// On macOS, 'container' is often preferred for performance if available,
-	// but both are fully supported.
-	if _, err := exec.LookPath("container"); err == nil {
-		return NewAppleContainerRuntime()
-	}
-
-	if _, err := exec.LookPath("docker"); err == nil {
-		return NewDockerRuntime()
-	}
-
-	// Default return - the caller will handle the error if the binary is missing
-	return NewAppleContainerRuntime()
+	// Fallback should not be reached if logic is correct, but default to Docker
+	return NewDockerRuntime()
 }
 
 type ErrorRuntime struct {

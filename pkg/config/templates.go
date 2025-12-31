@@ -16,7 +16,7 @@ type Template struct {
 }
 
 func (t *Template) LoadConfig() (*api.ScionConfig, error) {
-	path := filepath.Join(t.Path, "scion.json")
+	path := filepath.Join(t.Path, "scion-agent.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,7 +96,7 @@ func GetTemplateChain(name string) ([]*Template, error) {
 	return chain, nil
 }
 
-func CreateTemplate(name string, harnessProvider string, global bool) error {
+func CreateTemplate(name, harness, embedDir, configDirName string, global bool) error {
 	var templatesDir string
 	var err error
 
@@ -115,7 +115,7 @@ func CreateTemplate(name string, harnessProvider string, global bool) error {
 		return fmt.Errorf("template %s already exists at %s", name, templateDir)
 	}
 
-	return SeedTemplateDir(templateDir, name, harnessProvider, false)
+	return SeedTemplateDir(templateDir, name, harness, embedDir, configDirName, false)
 }
 
 func CloneTemplate(srcName, destName string, global bool) error {
@@ -143,13 +143,16 @@ func CloneTemplate(srcName, destName string, global bool) error {
 		return err
 	}
 
-	// Update scion.json in destination with the new template name
-	scionPath := filepath.Join(destPath, "scion.json")
+	// Update scion-agent.json in destination with the new template name
+	scionPath := filepath.Join(destPath, "scion-agent.json")
 	data, err := os.ReadFile(scionPath)
 	if err == nil {
 		var cfg api.ScionConfig
 		if err := json.Unmarshal(data, &cfg); err == nil {
-			cfg.Template = destName
+			if cfg.Info == nil {
+				cfg.Info = &api.AgentInfo{}
+			}
+			cfg.Info.Template = destName
 			newData, err := json.MarshalIndent(cfg, "", "  ")
 			if err == nil {
 				_ = os.WriteFile(scionPath, newData, 0644)
@@ -174,10 +177,10 @@ func UpdateDefaultTemplates(global bool) error {
 		return err
 	}
 
-	if err := SeedTemplateDir(filepath.Join(templatesDir, "gemini"), "gemini", "gemini", true); err != nil {
+	if err := SeedTemplateDir(filepath.Join(templatesDir, "gemini"), "gemini", "gemini", "gemini", ".gemini", true); err != nil {
 		return err
 	}
-	return SeedTemplateDir(filepath.Join(templatesDir, "claude"), "claude", "claude", true)
+	return SeedTemplateDir(filepath.Join(templatesDir, "claude"), "claude", "claude", "claude", ".claude", true)
 }
 
 func DeleteTemplate(name string, global bool) error {
@@ -257,11 +260,8 @@ func MergeScionConfig(base, override *api.ScionConfig) *api.ScionConfig {
 
 	result := *base // Shallow copy initially
 
-	if override.Template != "" {
-		result.Template = override.Template
-	}
-	if override.HarnessProvider != "" {
-		result.HarnessProvider = override.HarnessProvider
+	if override.Harness != "" {
+		result.Harness = override.Harness
 	}
 	if override.ConfigDir != "" {
 		result.ConfigDir = override.ConfigDir
@@ -282,23 +282,11 @@ func MergeScionConfig(base, override *api.ScionConfig) *api.ScionConfig {
 		newVolumes = append(newVolumes, override.Volumes...)
 		result.Volumes = newVolumes
 	}
-	if override.UnixUsername != "" {
-		result.UnixUsername = override.UnixUsername
-	}
-	if override.Image != "" {
-		result.Image = override.Image
-	}
 	if override.Detached != nil {
 		result.Detached = override.Detached
 	}
-	if override.UseTmux != nil {
-		result.UseTmux = override.UseTmux
-	}
-	if override.Model != "" {
-		result.Model = override.Model
-	}
-	if override.Runtime != "" {
-		result.Runtime = override.Runtime
+	if len(override.CommandArgs) > 0 {
+		result.CommandArgs = override.CommandArgs
 	}
 	if override.Kubernetes != nil {
 		if result.Kubernetes == nil {
@@ -318,25 +306,43 @@ func MergeScionConfig(base, override *api.ScionConfig) *api.ScionConfig {
 			}
 		}
 	}
-	if override.Agent != nil {
-		if result.Agent == nil {
-			agentCopy := *override.Agent
-			result.Agent = &agentCopy
+	if override.Info != nil {
+		if result.Info == nil {
+			infoCopy := *override.Info
+			result.Info = &infoCopy
 		} else {
-			agentCopy := *result.Agent
-			if override.Agent.Grove != "" {
-				agentCopy.Grove = override.Agent.Grove
+			infoCopy := *result.Info
+			if override.Info.ID != "" {
+				infoCopy.ID = override.Info.ID
 			}
-			if override.Agent.Name != "" {
-				agentCopy.Name = override.Agent.Name
+			if override.Info.Name != "" {
+				infoCopy.Name = override.Info.Name
 			}
-			if override.Agent.Status != "" {
-				agentCopy.Status = override.Agent.Status
+			if override.Info.Template != "" {
+				infoCopy.Template = override.Info.Template
 			}
-			if override.Agent.Kubernetes != nil {
-				agentCopy.Kubernetes = override.Agent.Kubernetes
+			if override.Info.Grove != "" {
+				infoCopy.Grove = override.Info.Grove
 			}
-			result.Agent = &agentCopy
+			if override.Info.GrovePath != "" {
+				infoCopy.GrovePath = override.Info.GrovePath
+			}
+			if override.Info.ContainerStatus != "" {
+				infoCopy.ContainerStatus = override.Info.ContainerStatus
+			}
+			if override.Info.Status != "" {
+				infoCopy.Status = override.Info.Status
+			}
+			if override.Info.Image != "" {
+				infoCopy.Image = override.Info.Image
+			}
+			if override.Info.Runtime != "" {
+				infoCopy.Runtime = override.Info.Runtime
+			}
+			if override.Info.Kubernetes != nil {
+				infoCopy.Kubernetes = override.Info.Kubernetes
+			}
+			result.Info = &infoCopy
 		}
 	}
 

@@ -33,8 +33,4 @@ func init() {
 
 	startCmd.Flags().BoolVarP(&attach, "attach", "a", false, "Attach to the agent TTY after starting")
 
-	startCmd.Flags().StringVarP(&model, "model", "m", "", "Model to use (overrides template)")
-
-	startCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "", "Runtime to use (local, remote, docker, kubernetes)")
-
 }

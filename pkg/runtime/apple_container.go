@@ -99,15 +99,17 @@ func (r *AppleContainerRuntime) List(ctx context.Context, labelFilter map[string
 		}
 
 		agents = append(agents, api.AgentInfo{
-			ID:          c.Configuration.ID,
-			Name:        c.Configuration.Labels["scion.name"],
-			Template:    c.Configuration.Labels["scion.template"],
-			Grove:       c.Configuration.Labels["scion.grove"],
-			GrovePath:   c.Configuration.Labels["scion.grove_path"],
-			Labels:      c.Configuration.Labels,
-			Annotations: c.Configuration.Labels,
-			Status:      c.Status,
-			Image:       c.Configuration.Image.Reference,
+			ID:              c.Configuration.ID,
+			Name:            c.Configuration.Labels["scion.name"],
+			Template:        c.Configuration.Labels["scion.template"],
+			Grove:           c.Configuration.Labels["scion.grove"],
+			GrovePath:       c.Configuration.Labels["scion.grove_path"],
+			Labels:          c.Configuration.Labels,
+			Annotations:     c.Configuration.Labels,
+			ContainerStatus: c.Status,
+			Status:          "created", // Default status, updated by AgentManager logic
+			Image:           c.Configuration.Image.Reference,
+			Runtime:         r.Name(),
 		})
 	}
 
@@ -123,8 +125,7 @@ func (r *AppleContainerRuntime) Attach(ctx context.Context, id string) error {
 	// 1. Find container to check for tmux label
 	agents, err := r.List(ctx, map[string]string{"scion.name": id})
 	if err != nil || len(agents) == 0 {
-		// Fallback to direct attach if name matching fails
-		return runInteractiveCommand(r.Command, "attach", id)
+		return fmt.Errorf("apple container runtime does not support 'attach' command directly")
 	}
 
 	a := agents[0]
@@ -133,7 +134,7 @@ func (r *AppleContainerRuntime) Attach(ctx context.Context, id string) error {
 		return runInteractiveCommand(r.Command, "exec", "-it", a.ID, "tmux", "attach", "-t", "scion")
 	}
 
-	return runInteractiveCommand(r.Command, "attach", a.ID)
+	return fmt.Errorf("apple container runtime does not support 'attach' without tmux")
 }
 
 func (r *AppleContainerRuntime) ImageExists(ctx context.Context, image string) (bool, error) {

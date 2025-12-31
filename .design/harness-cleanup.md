@@ -1,7 +1,7 @@
 # Design: Harness Interface Cleanup
 
 ## Objective
-Decouple provider-specific logic from the core `agent` and `config` packages by extending the `Harness` interface to cover the full agent lifecycle, particularly the provisioning phase. Consolidate configuration and behavior decisions into the template structure (`scion.json`) so that harness implementations are minimized and the system is more data-driven.
+Decouple harness-specific logic from the core `agent` and `config` packages by extending the `Harness` interface to cover the full agent lifecycle, particularly the provisioning phase. Consolidate configuration and behavior decisions into the template structure (`scion-agent.json`) so that harness implementations are minimized and the system is more data-driven.
 
 ## Proposed Changes
 
@@ -24,12 +24,12 @@ type Harness interface {
 
     // New methods
     
-    // Provision performs provider-specific setup during agent creation.
-    // This is called after templates are copied and scion.json is written.
+    // Provision performs harness-specific setup during agent creation.
+    // This is called after templates are copied and scion-agent.json is written.
     Provision(ctx context.Context, agentName, agentHome, agentWorkspace string) error
 
     // GetEmbedDir returns the name of the directory in pkg/config/embeds/ 
-    // that contains template files for this provider (e.g., "claude", "gemini").
+    // that contains template files for this harness (e.g., "claude", "gemini").
     GetEmbedDir() string
 }
 ```
@@ -38,25 +38,25 @@ type Harness interface {
 *   **Remove `UpdateClaudeJSON`**: Move the logic of this function into `pkg/harness/claude_code.go` as the `Provision` method.
 *   **Update `ProvisionAgent`**:
     *   Remove the direct call to `UpdateClaudeJSON`.
-    *   Instantiate the harness: `h := harness.New(finalScionCfg.HarnessProvider)`.
+    *   Instantiate the harness: `h := harness.New(finalScionCfg.Harness)`.
     *   Call `h.Provision(ctx, agentName, agentHome, agentWorkspace)` at the end of the function (before returning).
 
 ### 4. Refactor `pkg/config/init.go` and `SeedTemplateDir`
 *   **Update `SeedTemplateDir` Signature**:
-    *   Change signature to: `SeedTemplateDir(templateDir, templateName, harnessProvider, embedDir, configDirName string, force bool) error`.
-    *   Remove the hardcoded `if harnessProvider == "claude"` logic for determining `embedDir` and `configDirName`. Use the passed arguments instead.
+    *   Change signature to: `SeedTemplateDir(templateDir, templateName, harness, embedDir, configDirName string, force bool) error`.
+    *   Remove the hardcoded `if harness == "claude"` logic for determining `embedDir` and `configDirName`. Use the passed arguments instead.
 *   **Update Callers**:
     *   `InitProject` and `InitGlobal`: Update calls to pass specific strings for default templates (e.g., for Claude: `embedDir="claude"`, `configDirName=".claude"`).
     *   `CreateTemplate`: Requires updates to fetch these values from the harness (see below).
 
 ### 5. Refactor `pkg/config/templates.go`
 *   **Update `CreateTemplate`**:
-    *   This function needs to know the `embedDir` and `configDirName` for the requested provider.
+    *   This function needs to know the `embedDir` and `configDirName` for the requested harness.
     *   Since `pkg/config` cannot import `pkg/harness`, we must pass this information in from the CLI layer (`cmd/create.go`), OR `CreateTemplate` accepts a `HarnessMetadata` struct (defined in `pkg/api`).
     *   **Decision**: Update `CreateTemplate` to accept `embedDir` and `configDirName`.
 
 ### 6. Refactor `cmd/create.go` (CLI Layer)
-*   When creating a template, use `harness.New(provider)` to get the harness instance.
+*   When creating a template, use `harness.New(harness)` to get the harness instance.
 *   Extract `h.GetEmbedDir()` and `h.DefaultConfigDir()`.
 *   Pass these values to `config.CreateTemplate`.
 
@@ -71,19 +71,19 @@ type Harness interface {
 ### 8. Update `pkg/api/types.go`
 *   Add `CommandArgs []string `json:"command_args,omitempty"` to `ScionConfig`.
 
-### 9. Simplify `scion.json` Logic (Data-Driven)
+### 9. Simplify `scion-agent.json` Logic (Data-Driven)
 
-Standardize how the harness consumes `scion.json` to reduce code in `GetEnv`, `GetVolumes`, etc.
+Standardize how the harness consumes `scion-agent.json` to reduce code in `GetEnv`, `GetVolumes`, etc.
 
 *   **Environment Variables**:
-    *   If `env` in `scion.json` has a key with an empty value (e.g., `"MY_KEY": ""`), it implies "inherit from host environment".
+    *   If `env` in `scion-agent.json` has a key with an empty value (e.g., `"MY_KEY": ""`), it implies "inherit from host environment".
     *   If value is set, use it.
     *   Harness `GetEnv` implementations should merge this logic with their specific requirements.
 
 *   **Volume Mounts**:
     *   Support `~` expansion in `Source` (host user home) and `Target` (container user home).
     *   Example: `{ "source": "~/.config/gcloud", "target": "~/.config/gcloud" }`.
-    *   Harness `GetVolumes` should process the `ScionConfig.Volumes` list, expand paths, and append provider-specific volumes (like credentials).
+    *   Harness `GetVolumes` should process the `ScionConfig.Volumes` list, expand paths, and append harness-specific volumes (like credentials).
 
 *   **Command Args**:
     *   Harness `GetCommand` should accept the base args from `ScionConfig.CommandArgs`.

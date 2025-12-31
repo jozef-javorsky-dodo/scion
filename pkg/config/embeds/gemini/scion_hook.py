@@ -5,7 +5,7 @@ import tempfile
 from datetime import datetime
 
 HOME = os.path.expanduser("~")
-SCION_JSON_PATH = os.path.join(HOME, "scion.json")
+SCION_JSON_PATH = os.path.join(HOME, "agent-info.json")
 AGENT_LOG_PATH = os.path.join(HOME, "agent.log")
 
 def log_event(state, message):
@@ -20,9 +20,14 @@ def update_status(status):
         with open(SCION_JSON_PATH, "r") as f:
             data = json.load(f)
         
-        if "agent" not in data:
-            data["agent"] = {}
-        data["agent"]["status"] = status
+        # Handle different potential structures
+        if "info" in data and isinstance(data["info"], dict):
+            data["info"]["status"] = status
+        elif "agent" in data and isinstance(data["agent"], dict):
+            data["agent"]["status"] = status
+        else:
+            # Assume it's AgentInfo directly or we just set it at top level
+            data["status"] = status
         
         # Atomic write
         fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(SCION_JSON_PATH))
@@ -30,7 +35,7 @@ def update_status(status):
             json.dump(data, f, indent=2)
         os.replace(temp_path, SCION_JSON_PATH)
     except Exception as e:
-        log_event("ERROR", f"Failed to update scion.json: {e}")
+        log_event("ERROR", f"Failed to update {os.path.basename(SCION_JSON_PATH)}: {e}")
 
 def main():
     try:

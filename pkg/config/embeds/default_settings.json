@@ -1,11 +1,41 @@
 {
-  "default_runtime": "local",
+  "active_profile": "local",
   "default_template": "gemini",
-  "kubernetes": {
-    "default_context": "",
-    "default_namespace": ""
+  "runtimes": {
+    "docker": {
+      "host": ""
+    },
+    "container": {
+      "tmux": true
+    },
+    "kubernetes": {
+      "context": "",
+      "namespace": ""
+    }
   },
-  "docker": {
-    "host": ""
+  "harnesses": {
+    "gemini": {
+      "image": "gemini-cli-sandbox:golang",
+      "user": "node"
+    },
+    "claude": {
+      "image": "claude-code:latest",
+      "user": "node"
+    }
+  },
+  "profiles": {
+    "local": {
+      "runtime": "container",
+      "tmux": true
+    },
+    "remote": {
+      "runtime": "kubernetes",
+      "tmux": false,
+      "harness_overrides": {
+        "gemini": {
+          "image": "us-docker.pkg.dev/gemini-code-dev/gemini-cli/sandbox:0.22.4"
+          }
+        }
+    }
   }
 }

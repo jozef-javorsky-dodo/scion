@@ -20,17 +20,18 @@ The agent will be created from a template.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentName := args[0]
 
-		effectiveRuntime := agentRuntime
-		if effectiveRuntime == "" {
-			effectiveRuntime = agent.GetSavedRuntime(agentName, grovePath)
+		effectiveProfile := profile
+		if effectiveProfile == "" {
+			effectiveProfile = agent.GetSavedProfile(agentName, grovePath)
 		}
 
-		rt := runtime.GetRuntime(grovePath, effectiveRuntime)
+		rt := runtime.GetRuntime(grovePath, effectiveProfile)
 		mgr := agent.NewManager(rt)
 
 		opts := api.StartOptions{
 			Name:      agentName,
 			Template:  templateName,
+			Profile:   effectiveProfile,
 			Image:     agentImage,
 			GrovePath: grovePath,
 		}
@@ -61,6 +62,5 @@ func init() {
 	rootCmd.AddCommand(createCmd)
 	createCmd.Flags().StringVarP(&templateName, "type", "t", "", "Template to use")
 	createCmd.Flags().StringVarP(&agentImage, "image", "i", "", "Container image to use (overrides template)")
-	createCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "", "Runtime to use (local, remote, docker, kubernetes)")
 }
 

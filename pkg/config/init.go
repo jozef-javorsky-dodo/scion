@@ -2,23 +2,22 @@ package config
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/ptone/scion-agent/pkg/api"
 )
 
 //go:embed all:embeds/*
 var embedsFS embed.FS
 
-func SeedTemplateDir(templateDir string, templateName string, harnessProvider string, force bool) error {
-	configDirName := ".gemini"
-	embedDir := "gemini"
-	if harnessProvider == "claude" {
-		configDirName = ".claude"
-		embedDir = "claude"
-	}
+func GetDefaultSettingsData() ([]byte, error) {
+	return embedsFS.ReadFile("embeds/default_settings.json")
+}
 
+func SeedTemplateDir(templateDir, templateName, harness, embedDir, configDirName string, force bool) error {
 	// Create directories
 	dirs := []string{
 		templateDir,
@@ -36,7 +35,7 @@ func SeedTemplateDir(templateDir string, templateName string, harnessProvider st
 	readEmbed := func(name string) string {
 		data, err := embedsFS.ReadFile(filepath.Join("embeds", embedDir, name))
 		if err != nil {
-			// Fallback to gemini if not found in provider dir
+			// Fallback to gemini if not found in harness dir
 			data, err = embedsFS.ReadFile(filepath.Join("embeds", "gemini", name))
 			if err != nil {
 				return ""
@@ -45,19 +44,30 @@ func SeedTemplateDir(templateDir string, templateName string, harnessProvider st
 		return string(data)
 	}
 
-	scionJSON := readEmbed("scion.json")
-	if templateName != "" && templateName != "default" {
-		scionJSON = strings.Replace(scionJSON, `"template": "default"`, fmt.Sprintf(`"template": %q`, templateName), 1)
-	}
-	if harnessProvider != "" && !strings.Contains(scionJSON, "\"harness_provider\"") {
-		// Insert harness_provider before unix_username
-		providerLine := fmt.Sprintf("  \"harness_provider\": %q,\n", harnessProvider)
-		scionJSON = strings.Replace(scionJSON, "\"unix_username\"", providerLine+"  \"unix_username\"", 1)
+	scionJSONStr := readEmbed("scion-agent.json")
+	var scionConfig api.ScionConfig
+	if err := json.Unmarshal([]byte(scionJSONStr), &scionConfig); err != nil {
+		// Fallback if it's not valid JSON, though it should be
+		// Maybe log warning?
+	} else {
+		// TODO clean up this legacy reference to a "default template"
+		// templates are now named after harness, and default template is a setting
+		if templateName != "" && templateName != "default" {
+			if scionConfig.Info == nil {
+				scionConfig.Info = &api.AgentInfo{}
+			}
+			scionConfig.Info.Template = templateName
+		}
+
+		// Update scionJSONStr with modified config
+		if modifiedData, err := json.MarshalIndent(scionConfig, "", "  "); err == nil {
+			scionJSONStr = string(modifiedData)
+		}
 	}
 
 	mdFile := "gemini.md"
 	claudeJSON := ""
-	if harnessProvider == "claude" {
+	if harness == "claude" {
 		mdFile = "claude.md"
 		claudeJSON = readEmbed(".claude.json")
 	}
@@ -67,7 +77,7 @@ func SeedTemplateDir(templateDir string, templateName string, harnessProvider st
 		path    string
 		content string
 	}{
-		{filepath.Join(templateDir, "scion.json"), scionJSON},
+		{filepath.Join(templateDir, "scion-agent.json"), scionJSONStr},
 		{filepath.Join(templateDir, "scion_hook.py"), readEmbed("scion_hook.py")},
 		{filepath.Join(templateDir, configDirName, "settings.json"), readEmbed("settings.json")},
 		{filepath.Join(templateDir, configDirName, "system_prompt.md"), readEmbed("system_prompt.md")},
@@ -138,11 +148,11 @@ func InitProject(targetDir string) error {
 		return fmt.Errorf("failed to create agents directory: %w", err)
 	}
 
-	if err := SeedTemplateDir(filepath.Join(templatesDir, "gemini"), "gemini", "gemini", false); err != nil {
+	if err := SeedTemplateDir(filepath.Join(templatesDir, "gemini"), "gemini", "gemini", "gemini", ".gemini", false); err != nil {
 		return fmt.Errorf("failed to seed gemini template: %w", err)
 	}
 
-	return SeedTemplateDir(filepath.Join(templatesDir, "claude"), "claude", "claude", false)
+	return SeedTemplateDir(filepath.Join(templatesDir, "claude"), "claude", "claude", "claude", ".claude", false)
 }
 
 func InitGlobal() error {
@@ -170,9 +180,9 @@ func InitGlobal() error {
 		return fmt.Errorf("failed to create global agents directory: %w", err)
 	}
 
-	if err := SeedTemplateDir(filepath.Join(templatesDir, "gemini"), "gemini", "gemini", false); err != nil {
+	if err := SeedTemplateDir(filepath.Join(templatesDir, "gemini"), "gemini", "gemini", "gemini", ".gemini", false); err != nil {
 		return fmt.Errorf("failed to seed global gemini template: %w", err)
 	}
 
-	return SeedTemplateDir(filepath.Join(templatesDir, "claude"), "claude", "claude", false)
+	return SeedTemplateDir(filepath.Join(templatesDir, "claude"), "claude", "claude", "claude", ".claude", false)
 }

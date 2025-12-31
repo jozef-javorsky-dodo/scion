@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,12 +65,12 @@ func (g *GeminiCLI) DiscoverAuth(agentHome string) api.AuthConfig {
 	return auth
 }
 
-func (g *GeminiCLI) GetEnv(agentName string, unixUsername string, model string, auth api.AuthConfig) map[string]string {
+func (g *GeminiCLI) GetEnv(agentName string, unixUsername string, auth api.AuthConfig) map[string]string {
 	env := make(map[string]string)
 
 	env["GEMINI_AGENT_NAME"] = agentName
 	if g.HasSystemPrompt() {
-		env["GEMINI_SYSTEM_MD"] = fmt.Sprintf("/home/%s/%s/system_prompt.md", unixUsername, g.DefaultConfigDir())
+		env["GEMINI_SYSTEM_MD"] = fmt.Sprintf("%s/%s/system_prompt.md", util.GetHomeDir(unixUsername), g.DefaultConfigDir())
 	}
 
 	if auth.GeminiAPIKey != "" {
@@ -93,25 +94,22 @@ func (g *GeminiCLI) GetEnv(agentName string, unixUsername string, model string, 
 	if auth.GoogleAppCredentials != "" {
 		env["GEMINI_DEFAULT_AUTH_TYPE"] = "compute-default-credentials"
 		// The path is fixed in PropagateFiles
-		env["GOOGLE_APPLICATION_CREDENTIALS"] = fmt.Sprintf("/home/%s/.config/gcp/application_default_credentials.json", unixUsername)
+		env["GOOGLE_APPLICATION_CREDENTIALS"] = fmt.Sprintf("%s/.config/gcp/application_default_credentials.json", util.GetHomeDir(unixUsername))
 	}
 
 	if auth.OAuthCreds != "" {
 		env["GEMINI_DEFAULT_AUTH_TYPE"] = "oauth-personal"
 	}
 
-	if model != "" {
-		env["GEMINI_MODEL"] = model
-	}
-
 	return env
 }
 
-func (g *GeminiCLI) GetCommand(task string, resume bool) []string {
+func (g *GeminiCLI) GetCommand(task string, resume bool, baseArgs []string) []string {
 	args := []string{"gemini", "--yolo"}
 	if resume {
 		args = append(args, "--resume")
 	}
+	args = append(args, baseArgs...)
 	args = append(args, "--prompt-interactive", task)
 	return args
 }
@@ -149,14 +147,14 @@ func (g *GeminiCLI) GetVolumes(unixUsername string, auth api.AuthConfig) []api.V
 	if auth.OAuthCreds != "" {
 		volumes = append(volumes, api.VolumeMount{
 			Source:   auth.OAuthCreds,
-			Target:   fmt.Sprintf("/home/%s/%s/oauth_creds.json", unixUsername, g.DefaultConfigDir()),
+			Target:   fmt.Sprintf("%s/%s/oauth_creds.json", util.GetHomeDir(unixUsername), g.DefaultConfigDir()),
 			ReadOnly: true,
 		})
 	}
 	if auth.GoogleAppCredentials != "" {
 		volumes = append(volumes, api.VolumeMount{
 			Source:   auth.GoogleAppCredentials,
-			Target:   fmt.Sprintf("/home/%s/.config/gcp/application_default_credentials.json", unixUsername),
+			Target:   fmt.Sprintf("%s/.config/gcp/application_default_credentials.json", util.GetHomeDir(unixUsername)),
 			ReadOnly: true,
 		})
 	}
@@ -169,4 +167,12 @@ func (g *GeminiCLI) DefaultConfigDir() string {
 
 func (g *GeminiCLI) HasSystemPrompt() bool {
 	return true
+}
+
+func (g *GeminiCLI) Provision(ctx context.Context, agentName, agentHome, agentWorkspace string) error {
+	return nil
+}
+
+func (g *GeminiCLI) GetEmbedDir() string {
+	return "gemini"
 }

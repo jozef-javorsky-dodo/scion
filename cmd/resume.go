@@ -26,5 +26,4 @@ func init() {
 	resumeCmd.Flags().StringVarP(&agentImage, "image", "i", "", "Container image to use (overrides template)")
 	resumeCmd.Flags().BoolVar(&noAuth, "no-auth", false, "Disable authentication propagation")
 	resumeCmd.Flags().BoolVarP(&attach, "attach", "a", false, "Attach to the agent TTY after starting")
-	resumeCmd.Flags().StringVarP(&model, "model", "m", "", "Model to use (overrides template)")
 }

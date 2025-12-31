@@ -9,7 +9,7 @@ There is initial feature in kubernetes to watch a pod
 
  - A setting provides an endpoint for a control plane service API
  - agent status and logs are synced to this service
- - the service provides agent config and state pesistance in a configurable datastore (with multiple database provider backends supports)
+ - the service provides agent config and state pesistance in a configurable datastore (with multiple database harness backends supports)
  - the data model of the service supports the grove and agent names, and adds metadata such as user (user of the tool), start time, etc
  - the service offers lifecycle management of agents (see related doc on programmatic access)
  - the service has a module that provides a web UI

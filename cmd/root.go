@@ -17,6 +17,7 @@ import (
 var (
 	grovePath  string
 	globalMode bool
+	profile    string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -52,6 +53,7 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&grovePath, "grove", "g", "", "Path to a .scion grove directory")
 	rootCmd.PersistentFlags().BoolVar(&globalMode, "global", false, "Use the global grove (equivalent to --grove global)")
+	rootCmd.PersistentFlags().StringVarP(&profile, "profile", "p", "", "Configuration profile to use")
 }
 
 

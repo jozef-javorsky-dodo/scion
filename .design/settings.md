@@ -7,7 +7,7 @@ As `scion-agent` grows in complexity, especially with the addition of multiple r
 - Provide a hierarchical configuration system (Global -> Grove).
 - Support stateful defaults like `default_runtime`.
 - Enable a `scion config` command for easy management.
-- Keep agent definitions (`scion.json`) separate from user preferences (`settings.json`).
+- Keep agent definitions (`scion-agent.json`) separate from user preferences (`settings.json`).
 
 ## Hierarchy & Precedence
 Settings are resolved in the following order (highest priority first):
@@ -78,8 +78,8 @@ We will introduce a `config` command to view and modify these settings without m
 - `scion config get kubernetes.default_context`: Retrieve a specific setting.
 
 ## Interaction with Templates & Agents
-- **Templates:** If a template's `scion.json` specifies a `runtime`, it **overrides** the `default_runtime` in `settings.json`.
-- **Agents:** When an agent is created, the resolved runtime is **baked into** the agent's `scion.json`. Changing `settings.json` later will not affect existing agents.
+- **Templates:** If a template's `scion-agent.json` specifies a `runtime`, it **overrides** the `default_runtime` in `settings.json`.
+- **Agents:** When an agent is created, the resolved runtime is **baked into** the agent's `scion-agent.json`. Changing `settings.json` later will not affect existing agents.
 
 ## Implementation Tasks
 1.  Define `Settings` and `KubernetesSettings` structs.

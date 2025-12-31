@@ -44,7 +44,7 @@ We need to generate Kubernetes clients for the `agent-sandbox` APIs.
 ### Runtime Lifecycle
 
 #### 1. Start (`scion start`)
-1.  **Load Config**: Read `scion.json` or defaults to determine the target `SandboxTemplate` name (default: `default-scion-agent`).
+1.  **Load Config**: Read `scion-agent.json` or defaults to determine the target `SandboxTemplate` name (default: `default-scion-agent`).
 2.  **Ensure Template**: (Optional) If running in a local dev context (e.g., Kind), check if the template exists. If not, create a default one.
 3.  **Create Claim**:
     ```yaml
@@ -66,7 +66,7 @@ We need to generate Kubernetes clients for the `agent-sandbox` APIs.
 6.  **Context Sync**:
     *   Execute `tar` stream upload to the resolved Pod.
     *   *Note*: The Pod must have `tar` installed (standard in most distro-less debug images, or use ephemeral container).
-7.  **Persist State**: Update local `.scion/agents/<id>/scion.json` with Claim name and Namespace.
+7.  **Persist State**: Update local `.scion/agents/<id>/scion-agent.json` with Claim name and Namespace.
 
 #### 2. Stop (`scion stop`)
 1.  **Delete Claim**: `kubectl delete sandboxclaim scion-<agent-id>`.
@@ -81,7 +81,7 @@ We need to generate Kubernetes clients for the `agent-sandbox` APIs.
 
 #### The Identity Problem (Service Accounts)
 Instead of mounting secrets directly, the `SandboxTemplate` should define a `ServiceAccount` that has Workload Identity (GCP) or IRSA (AWS) configured.
-*   **User Config**: The user's `scion.json` can specify a `serviceAccountName` override if the Template allows it (or we create a new Template on the fly).
+*   **User Config**: The user's `scion-agent.json` can specify a `serviceAccountName` override if the Template allows it (or we create a new Template on the fly).
 
 #### Networking & Discovery
 The Sandbox creates a Headless Service.

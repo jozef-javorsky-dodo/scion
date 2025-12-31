@@ -20,8 +20,12 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	if err == nil {
 		for _, a := range agents {
 			if a.ID == opts.Name || a.Name == opts.Name {
-				isRunning := (strings.HasPrefix(a.Status, "Up") || a.Status == "Running")
+				isRunning := (strings.HasPrefix(a.ContainerStatus, "Up") || a.ContainerStatus == "Running")
 				if isRunning {
+					a.Detached = true
+					if opts.Detached != nil {
+						a.Detached = *opts.Detached
+					}
 					return &a, nil
 				}
 				// If it exists but not running, we delete it so we can recreate it
@@ -38,13 +42,9 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	}
 	groveName := config.GetGroveName(projectDir)
 
-	agentDir, agentHome, agentWorkspace, finalScionCfg, err := GetAgent(opts.Name, opts.Template, opts.Image, opts.GrovePath, "")
+	agentDir, agentHome, agentWorkspace, finalScionCfg, err := GetAgent(ctx, opts.Name, opts.Template, opts.Image, opts.GrovePath, "")
 	if err != nil {
 		return nil, err
-	}
-
-	if finalScionCfg != nil && finalScionCfg.HarnessProvider == "claude" {
-		_ = UpdateClaudeJSON(opts.Name, agentHome, agentWorkspace)
 	}
 
 	promptFile := filepath.Join(agentDir, "prompt.md")
@@ -68,23 +68,57 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		_ = os.WriteFile(promptFile, []byte(task), 0644)
 	}
 
-	// Resolve image
-	resolvedImage := ""
-	if finalScionCfg != nil && finalScionCfg.Image != "" {
-		resolvedImage = finalScionCfg.Image
+	// Load settings for registry resolution
+	settings, err := config.LoadSettings(projectDir)
+	if err != nil {
+		// Fallback to defaults or log?
 	}
+
+	harnessName := ""
+	if finalScionCfg != nil {
+		harnessName = finalScionCfg.Harness
+	}
+
+	// Default values
+	resolvedImage := "gemini-cli-sandbox"
+	unixUsername := "root"
+	useTmux := false
+	profileName := opts.Profile
+
+	if settings != nil && harnessName != "" {
+		hConfig, err := settings.ResolveHarness(opts.Profile, harnessName)
+		if err == nil {
+			resolvedImage = hConfig.Image
+			unixUsername = hConfig.User
+		}
+	}
+
+	if settings != nil {
+		if profileName == "" {
+			profileName = settings.ActiveProfile
+		}
+		if p, ok := settings.Profiles[profileName]; ok {
+			// 1. Start with runtime default if available
+			if rCfg, ok := settings.Runtimes[p.Runtime]; ok && rCfg.Tmux != nil {
+				useTmux = *rCfg.Tmux
+			}
+			// 2. Override with profile setting if explicitly set
+			if p.Tmux != nil {
+				useTmux = *p.Tmux
+			}
+		}
+	}
+
+	if m.Runtime.Name() == "container" && !useTmux {
+		fmt.Fprintf(os.Stderr, "Warning: Apple container runtime does not support 'attach' without tmux. Sessions will be non-interactive after start.\n")
+	}
+
+	// CLI Overrides
 	if opts.Image != "" {
 		resolvedImage = opts.Image
 	}
-	if resolvedImage == "" {
-		resolvedImage = "gemini-cli-sandbox"
-	}
 
-	harnessProvider := ""
-	if finalScionCfg != nil {
-		harnessProvider = finalScionCfg.HarnessProvider
-	}
-	h := harness.New(harnessProvider)
+	h := harness.New(harnessName)
 
 	// 3. Propagate credentials
 	var auth api.AuthConfig
@@ -95,71 +129,39 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 				return nil, fmt.Errorf("failed to get auth: %w", err)
 			}
 		} else {
-			// Fallback to legacy discovery if no provider given
+			// Fallback to legacy discovery if no harness given
 			auth = h.DiscoverAuth(agentHome)
 		}
 	}
 
 	// 4. Launch container
-	useTmux := false
-	resolvedModel := "flash"
-	unixUsername := "node"
 	detached := true
 
 	if finalScionCfg != nil {
-		useTmux = finalScionCfg.IsUseTmux()
 		detached = finalScionCfg.IsDetached()
-		if finalScionCfg.Model != "" {
-			resolvedModel = finalScionCfg.Model
-		}
-		if finalScionCfg.UnixUsername != "" {
-			unixUsername = finalScionCfg.UnixUsername
-		}
 	}
 
 	if opts.Detached != nil {
 		detached = *opts.Detached
 	}
 
-	if opts.Model != "" {
-		resolvedModel = opts.Model
-	}
-
 	if useTmux {
-		tmuxImage := resolvedImage
-		if !strings.Contains(tmuxImage, ":") {
-			tmuxImage = tmuxImage + ":tmux"
-		} else {
-			parts := strings.SplitN(resolvedImage, ":", 2)
-			tmuxImage = parts[0] + ":tmux"
-		}
-		resolvedImage = tmuxImage
+		// We no longer automatically append -tmux to the image tag.
+		// We launch optimistically and provide a clear error if tmux is missing.
 	}
 
 	exists, err := m.Runtime.ImageExists(ctx, resolvedImage)
 	if err != nil || !exists {
 		if err := m.Runtime.PullImage(ctx, resolvedImage); err != nil {
-			if useTmux {
-				return nil, fmt.Errorf("tmux support requested but image '%s' not found and pull failed: %w. Please ensure the image has a :tmux tag.", resolvedImage, err)
-			}
 			return nil, fmt.Errorf("failed to pull image '%s': %w", resolvedImage, err)
 		}
 	}
 
-	agentEnv := []string{}
-	if finalScionCfg != nil && finalScionCfg.Env != nil {
-		for k, v := range finalScionCfg.Env {
-			agentEnv = append(agentEnv, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-	// Add opts.Env
-	for k, v := range opts.Env {
-		agentEnv = append(agentEnv, fmt.Sprintf("%s=%s", k, v))
-	}
+	agentEnv := buildAgentEnv(finalScionCfg, opts.Env)
 
 	template := ""
-	if finalScionCfg != nil {
-		template = finalScionCfg.Template
+	if finalScionCfg != nil && finalScionCfg.Info != nil {
+		template = finalScionCfg.Info.Template
 	}
 
 	repoRoot := ""
@@ -178,8 +180,13 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		Auth:         auth,
 		Harness:      h,
 		UseTmux:      useTmux,
-		Model:        resolvedModel,
 		Task:         task,
+		CommandArgs: func() []string {
+			if finalScionCfg != nil {
+				return finalScionCfg.CommandArgs
+			}
+			return nil
+		}(),
 		Env:          agentEnv,
 		Volumes: func() []api.VolumeMount {
 			if finalScionCfg != nil {
@@ -199,6 +206,12 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	}
 	id, err := m.Runtime.Run(ctx, runCfg)
 	if err != nil {
+		if useTmux && (strings.Contains(err.Error(), "executable file not found") ||
+			strings.Contains(err.Error(), "no such file or directory") ||
+			strings.Contains(err.Error(), "tmux")) {
+			return nil, fmt.Errorf("failed to launch container with tmux: tmux binary not found in image '%s'. "+
+				"Please ensure the image has tmux installed, use an image with a :tmux tag, or disable tmux in settings. Error: %w", resolvedImage, err)
+		}
 		return nil, fmt.Errorf("failed to launch container: %w", err)
 	}
 
@@ -206,19 +219,39 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	if opts.Resume {
 		status = "resumed"
 	}
-	_ = UpdateAgentConfig(opts.Name, opts.GrovePath, status, m.Runtime.Name())
-	
-			// Fetch fresh info
-			allAgents, err := m.Runtime.List(ctx, map[string]string{"scion.name": opts.Name})
-			if err == nil {
-				for _, a := range allAgents {
-					if a.ID == id || a.Name == opts.Name {
-						a.Detached = detached
-						return &a, nil
-					}
+	_ = UpdateAgentConfig(opts.Name, opts.GrovePath, status, m.Runtime.Name(), profileName)
+
+	// Fetch fresh info
+	allAgents, err := m.Runtime.List(ctx, map[string]string{"scion.name": opts.Name})
+	if err == nil {
+		for _, a := range allAgents {
+			if a.ID == id || a.Name == opts.Name {
+				a.Detached = detached
+				return &a, nil
+			}
+		}
+	}
+
+	return &api.AgentInfo{ID: id, Name: opts.Name, Status: status, Detached: detached}, nil
+}
+
+func buildAgentEnv(scionCfg *api.ScionConfig, extraEnv map[string]string) []string {
+	agentEnv := []string{}
+	if scionCfg != nil && scionCfg.Env != nil {
+		for k, v := range scionCfg.Env {
+			if v == "" {
+				// Inherit from host environment
+				if hostVal, exists := os.LookupEnv(k); exists {
+					v = hostVal
 				}
 			}
-		
-			return &api.AgentInfo{ID: id, Name: opts.Name, Status: status, Detached: detached}, nil
+			agentEnv = append(agentEnv, fmt.Sprintf("%s=%s", k, v))
 		}
+	}
+	// Add extraEnv
+	for k, v := range extraEnv {
+		agentEnv = append(agentEnv, fmt.Sprintf("%s=%s", k, v))
+	}
+	return agentEnv
+}
 		

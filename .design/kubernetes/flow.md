@@ -25,7 +25,7 @@ This document traces the code path and logic for deploying a scion agent to a Ku
 - **Config Resolution**: Calls `GetAgent` to setup directories and config.
     -   **Paths**: Resolves `agentsDir`, `agentHome`, and `agentWorkspace`.
     -   **Templates**: Uses `config.GetTemplateChain` and `config.MergeScionConfig` to build the final `api.ScionConfig`.
-- **Harness**: Instantiates the harness provider (e.g., `gemini`) via `harness.New`.
+- **Harness**: Instantiates the harness (e.g., `gemini`) via `harness.New`.
 - **Auth**: Calls `h.DiscoverAuth(agentHome)` to load credentials (e.g., API keys) into an `api.AuthConfig` object.
 - **RunConfig**: Constructs an `api.RunConfig` object containing `Name`, `Image`, `Env`, `Auth`, `Workspace`, etc.
 
@@ -53,7 +53,7 @@ This document traces the code path and logic for deploying a scion agent to a Ku
     3.  **Transport**: Uses `remotecommand.NewSPDYExecutor` to pipe the local stdout (tar stream) to the remote command's stdin.
 
 ### 6. Finalization
-- **Status Update**: `RunAgent` calls `UpdateAgentStatus` to write `"status": "running"` (or `"resumed"`) to the agent's `scion.json`.
+- **Status Update**: `RunAgent` calls `UpdateAgentStatus` to write `"status": "running"` (or `"resumed"`) to the agent's `scion-agent.json`.
 - **Attach (Optional)**: If not detached, calls `rt.Attach(ctx, id)`.
     -   **Logic**: Starts a remote shell (`/bin/sh`) using SPDY executor, connecting `os.Stdin/Stdout/Stderr` to the Pod.
 
@@ -63,12 +63,12 @@ This document traces the code path and logic for deploying a scion agent to a Ku
 
 ### 1. Incomplete Context Sync
 - **Observation**: `syncContext` only synchronizes the `Workspace` directory.
-- **Flaw**: The `HomeDir` (containing `scion.json`, `gemini.md`, and system prompts) is **not** synchronized to the Pod. Most harnesses expect these files in the container's home directory to function correctly.
+- **Flaw**: The `HomeDir` (containing `scion-agent.json`, `gemini.md`, and system prompts) is **not** synchronized to the Pod. Most harnesses expect these files in the container's home directory to function correctly.
 
 ### 2. Missing Configuration Propagation
 - **Observation**: `KubernetesRuntime.Run` completely ignores several fields in `api.RunConfig`:
     -   `Env`: Environment variables prepared in `RunAgent` are dropped.
-    -   `Volumes`: Volume mounts defined in `scion.json` are dropped.
+    -   `Volumes`: Volume mounts defined in `scion-agent.json` are dropped.
     -   `Auth`: Credentials discovered by `DiscoverAuth` are dropped.
     -   `Image`: The resolved image is ignored; the runtime relies entirely on the `SandboxTemplate` referenced by `TemplateRef`.
 - **Flaw**: There is no mechanism in the current `SandboxClaim` to pass these per-agent overrides to the underlying Pod.

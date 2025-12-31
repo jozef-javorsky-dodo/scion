@@ -1,6 +1,6 @@
-# scion.json Configuration Reference
+# scion-agent.json Configuration Reference
 
-The `scion.json` file is used within templates and agent directories to configure how a Scion agent is provisioned and executed.
+The `scion-agent.json` file is used within templates and agent directories to configure how a Scion agent is provisioned and executed.
 
 ## Fields
 
@@ -8,15 +8,17 @@ The `scion.json` file is used within templates and agent directories to configur
 The name of the template this configuration belongs to.
 - **Example**: `"template": "gemini"`
 
-### `harness_provider` (string)
-The agent harness to use. This determines how environment variables are propagated and how the agent is executed.
-- **Supported values**: `gemini`, `claude`, `generic`
-- **Example**: `"harness_provider": "claude"`
+### `harness` (string)
+
+The agent harness to use. Currently supported values are `gemini` and `claude`.
+
+- **Example**: `"harness": "claude"`
 
 ### `config_dir` (string)
-The directory inside the agent's home where the harness stores its configuration.
-- **Default**: `.gemini` for `gemini`, `.claude` for `claude`, `.scion` for `generic`.
-- **Example**: `"config_dir": ".claude"`
+
+The directory within the agent's home that contains harness-specific configuration files. Defaults to `.gemini` or `.claude` depending on the harness.
+
+- **Example**: `"config_dir": ".gemini"`
 
 ### `unix_username` (string)
 The username used for the primary user inside the container.
@@ -45,7 +47,7 @@ Whether the agent should run in detached mode by default.
 ### `use_tmux` (boolean)
 If set to `true`, the agent's main process will be wrapped in a `tmux` session. This enables persistent interactive sessions that can be detached and re-attached using the `scion attach` command.
 - **Default**: `false`
-- **Details**: When enabled, `scion` will attempt to use a version of the configured image with a `:tmux` tag if available (e.g. `gemini-cli-sandbox:tmux`).
+- **Details**: When enabled, the image must have `tmux` installed. If `tmux` is not found in the image, the container will fail to start.
 - **Example**: `"use_tmux": true`
 
 ### `model` (string)
@@ -59,4 +61,4 @@ The model ID to use for the agent.
 - **Fields**: `grove`, `name`, `status`.
 
 ## Inheritance
-`scion` uses a template inheritance system. Configuration fields are merged from the specified template type and finally any overrides in the agent's own directory. The last value defined for a field takes precedence. Unlike earlier versions, there is no longer a single global `default` template that all templates inherit from; instead, agents start from a specific provider default like `gemini` or `claude`.
+`scion` uses a template inheritance system. Configuration fields are merged from the specified template type and finally any overrides in the agent's own directory. The last value defined for a field takes precedence. Unlike earlier versions, there is no longer a single global `default` template that all templates inherit from; instead, agents start from a specific harness default like `gemini` or `claude`.

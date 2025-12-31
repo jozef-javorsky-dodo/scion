@@ -36,7 +36,7 @@ func TestCreateTemplate(t *testing.T) {
 
 	// Test creating a project template
 	tplName := "test-tpl"
-	err = CreateTemplate(tplName, "gemini", false)
+	err = CreateTemplate(tplName, "gemini", "gemini", ".gemini", false)
 	if err != nil {
 		t.Fatalf("failed to create project template: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestCreateTemplate(t *testing.T) {
 
 	// Verify key files exist
 	files := []string{
-		"scion.json",
+		"scion-agent.json",
 		".bashrc",
 		filepath.Join(".gemini", "settings.json"),
 	}
@@ -60,7 +60,7 @@ func TestCreateTemplate(t *testing.T) {
 
 	// Test creating a global template
 	globalTplName := "global-tpl"
-	err = CreateTemplate(globalTplName, "gemini", true)
+	err = CreateTemplate(globalTplName, "gemini", "gemini", ".gemini", true)
 	if err != nil {
 		t.Fatalf("failed to create global template: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestCreateTemplate(t *testing.T) {
 	}
 
 	// Test duplicate template creation fails
-	err = CreateTemplate(tplName, "gemini", false)
+	err = CreateTemplate(tplName, "gemini", "gemini", ".gemini", false)
 	if err == nil {
 		t.Error("expected error when creating duplicate template, got nil")
 	}
@@ -105,11 +105,11 @@ func TestDeleteTemplate(t *testing.T) {
 
 	// Create templates to delete
 	tplName := "test-tpl-delete"
-	if err := CreateTemplate(tplName, "gemini", false); err != nil {
+	if err := CreateTemplate(tplName, "gemini", "gemini", ".gemini", false); err != nil {
 		t.Fatal(err)
 	}
 	globalTplName := "global-tpl-delete"
-	if err := CreateTemplate(globalTplName, "gemini", true); err != nil {
+	if err := CreateTemplate(globalTplName, "gemini", "gemini", ".gemini", true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -173,7 +173,7 @@ func TestUpdateDefaultTemplates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	geminiDefaultScionJSON := filepath.Join(projectDir, "templates", "gemini", "scion.json")
+	geminiDefaultScionJSON := filepath.Join(projectDir, "templates", "gemini", "scion-agent.json")
 	
 	// Corrupt the default template file
 	corruptContent := "CORRUPT"
@@ -192,7 +192,7 @@ func TestUpdateDefaultTemplates(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(data) == corruptContent {
-		t.Error("expected scion.json to be overwritten, but it still contains corrupt content")
+		t.Error("expected scion-agent.json to be overwritten, but it still contains corrupt content")
 	}
 }
 
@@ -204,27 +204,21 @@ func TestMergeScionConfig(t *testing.T) {
 		name     string
 		base     *api.ScionConfig
 		override *api.ScionConfig
-		wantTmux bool
+		wantStatus string
 	}{
 		{
-			name:     "override false to true",
-			base:     &api.ScionConfig{UseTmux: &falseVal},
-			override: &api.ScionConfig{UseTmux: &trueVal},
-			wantTmux: true,
-		},
-		{
-			name:     "override true to false",
-			base:     &api.ScionConfig{UseTmux: &trueVal},
-			override: &api.ScionConfig{UseTmux: &falseVal},
-			wantTmux: false,
+			name:     "override status",
+			base:     &api.ScionConfig{Info: &api.AgentInfo{Status: "created"}},
+			override: &api.ScionConfig{Info: &api.AgentInfo{Status: "running"}},
+			wantStatus: "running",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := MergeScionConfig(tt.base, tt.override)
-			if got.UseTmux == nil || *got.UseTmux != tt.wantTmux {
-				t.Errorf("MergeScionConfig() UseTmux = %v, want %v", got.UseTmux, tt.wantTmux)
+			if got.Info == nil || got.Info.Status != tt.wantStatus {
+				t.Errorf("MergeScionConfig() Status = %v, want %v", got.Info.Status, tt.wantStatus)
 			}
 		})
 	}
@@ -267,7 +261,7 @@ func TestCloneTemplate(t *testing.T) {
 
 	// Create a source template
 	srcName := "src-tpl"
-	if err := CreateTemplate(srcName, "gemini", false); err != nil {
+	if err := CreateTemplate(srcName, "gemini", "gemini", ".gemini", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -284,7 +278,7 @@ func TestCloneTemplate(t *testing.T) {
 
 	// Verify key files exist in destination
 	files := []string{
-		"scion.json",
+		"scion-agent.json",
 		".bashrc",
 		filepath.Join(".gemini", "settings.json"),
 	}
@@ -294,14 +288,14 @@ func TestCloneTemplate(t *testing.T) {
 		}
 	}
 
-	// Verify scion.json template field is updated
+	// Verify scion-agent.json template field is updated
 	destTpl := &Template{Name: destName, Path: expectedPath}
 	cfg, err := destTpl.LoadConfig()
 	if err != nil {
 		t.Fatalf("failed to load cloned template config: %v", err)
 	}
-	if cfg.Template != destName {
-		t.Errorf("expected template field to be %s, got %s", destName, cfg.Template)
+	if cfg.Info == nil || cfg.Info.Template != destName {
+		t.Errorf("expected template field to be %s, got %v", destName, cfg.Info)
 	}
 
 	// Test cloning to global

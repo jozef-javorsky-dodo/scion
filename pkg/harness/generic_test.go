@@ -40,11 +40,10 @@ func TestGeneric_GetEnv(t *testing.T) {
 		GoogleAppCredentials: "/path/to/creds.json",
 	}
 
-	env := g.GetEnv("test-agent", "test-user", "test-model", auth)
+	env := g.GetEnv("test-agent", "test-user", auth)
 
 	expectedEnv := map[string]string{
 		"SCION_AGENT_NAME":             "test-agent",
-		"SCION_MODEL":                  "test-model",
 		"GEMINI_API_KEY":               "test-gemini-key",
 		"ANTHROPIC_API_KEY":            "test-anthropic-key",
 		"GOOGLE_APPLICATION_CREDENTIALS": "/home/test-user/.config/gcp/application_default_credentials.json",
@@ -60,12 +59,17 @@ func TestGeneric_GetEnv(t *testing.T) {
 func TestGeneric_GetCommand(t *testing.T) {
 	g := &Generic{}
 
-	cmd := g.GetCommand("test task", false)
+	cmd := g.GetCommand("test task", false, nil)
 	if !reflect.DeepEqual(cmd, []string{"test task"}) {
 		t.Errorf("Expected command ['test task'], got %v", cmd)
 	}
 
-	cmdEmpty := g.GetCommand("", false)
+	cmdWithArgs := g.GetCommand("test task", false, []string{"--arg1"})
+	if !reflect.DeepEqual(cmdWithArgs, []string{"--arg1", "test task"}) {
+		t.Errorf("Expected command ['--arg1', 'test task'], got %v", cmdWithArgs)
+	}
+
+	cmdEmpty := g.GetCommand("", false, nil)
 	if len(cmdEmpty) != 0 {
 		t.Errorf("Expected empty command, got %v", cmdEmpty)
 	}

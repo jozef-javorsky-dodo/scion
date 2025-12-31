@@ -7,6 +7,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/ptone/scion-agent/pkg/config"
+	"github.com/ptone/scion-agent/pkg/harness"
 	"github.com/spf13/cobra"
 )
 
@@ -54,7 +55,7 @@ var templatesShowCmd = &cobra.Command{
 
 		fmt.Printf("Template: %s\n", tpl.Name)
 		fmt.Printf("Path:     %s\n", tpl.Path)
-		fmt.Println("Configuration (scion.json):")
+		fmt.Println("Configuration (scion-agent.json):")
 		
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
@@ -69,8 +70,16 @@ var templatesCreateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		global, _ := cmd.Flags().GetBool("global")
-		provider, _ := cmd.Flags().GetString("provider")
-		err := config.CreateTemplate(name, provider, global)
+		harnessName, _ := cmd.Flags().GetString("harness")
+		if harnessName == "" {
+			harnessName = "gemini"
+		}
+
+		h := harness.New(harnessName)
+		embedDir := h.GetEmbedDir()
+		configDir := h.DefaultConfigDir()
+
+		err := config.CreateTemplate(name, harnessName, embedDir, configDir, global)
 		if err != nil {
 			return err
 		}
@@ -136,5 +145,5 @@ func init() {
 	templatesCmd.AddCommand(templatesDeleteCmd)
 	templatesCmd.AddCommand(templatesUpdateDefaultCmd)
 
-	templatesCreateCmd.Flags().StringP("provider", "p", "", "Harness provider (e.g. gemini, claude)")
+	templatesCreateCmd.Flags().StringP("harness", "H", "", "Harness type (e.g. gemini, claude)")
 }

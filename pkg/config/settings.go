@@ -7,29 +7,100 @@ import (
 	"path/filepath"
 )
 
-type KubernetesSettings struct {
-	DefaultContext   string `json:"default_context,omitempty"`
-	DefaultNamespace string `json:"default_namespace,omitempty"`
+type RuntimeConfig struct {
+	Host      string `json:"host,omitempty"`
+	Context   string `json:"context,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Tmux      *bool  `json:"tmux,omitempty"`
 }
 
-type DockerSettings struct {
-	Host string `json:"host,omitempty"`
+type HarnessConfig struct {
+	Image string `json:"image"`
+	User  string `json:"user"`
+}
+
+type HarnessOverride struct {
+	Image string `json:"image,omitempty"`
+	User  string `json:"user,omitempty"`
+}
+
+type ProfileConfig struct {
+	Runtime          string                     `json:"runtime"`
+	Tmux             *bool                      `json:"tmux,omitempty"`
+	HarnessOverrides map[string]HarnessOverride `json:"harness_overrides,omitempty"`
 }
 
 type Settings struct {
-	DefaultRuntime  string             `json:"default_runtime,omitempty"`
-	DefaultTemplate string             `json:"default_template,omitempty"`
-	Kubernetes      KubernetesSettings `json:"kubernetes,omitempty"`
-	Docker          DockerSettings     `json:"docker,omitempty"`
+	ActiveProfile   string                   `json:"active_profile"`
+	DefaultTemplate string                   `json:"default_template,omitempty"`
+	Runtimes        map[string]RuntimeConfig `json:"runtimes"`
+	Harnesses       map[string]HarnessConfig `json:"harnesses"`
+	Profiles        map[string]ProfileConfig `json:"profiles"`
+}
+
+func (s *Settings) ResolveRuntime(profileName string) (RuntimeConfig, string, error) {
+	if profileName == "" {
+		profileName = s.ActiveProfile
+	}
+	profile, ok := s.Profiles[profileName]
+	if !ok {
+		return RuntimeConfig{}, "", fmt.Errorf("profile %q not found", profileName)
+	}
+	runtime, ok := s.Runtimes[profile.Runtime]
+	if !ok {
+		return RuntimeConfig{}, "", fmt.Errorf("runtime %q not found for profile %q", profile.Runtime, profileName)
+	}
+	return runtime, profile.Runtime, nil
+}
+
+func (s *Settings) ResolveHarness(profileName, harnessName string) (HarnessConfig, error) {
+	if profileName == "" {
+		profileName = s.ActiveProfile
+	}
+	baseHarness, ok := s.Harnesses[harnessName]
+	if !ok {
+		// Try to fallback to common harnesses if not found?
+		// For now, return error if not in registry
+		return HarnessConfig{}, fmt.Errorf("harness %q not found in registry", harnessName)
+	}
+
+	profile, ok := s.Profiles[profileName]
+	if !ok {
+		return baseHarness, nil
+	}
+
+	if profile.HarnessOverrides != nil {
+		if override, ok := profile.HarnessOverrides[harnessName]; ok {
+			if override.Image != "" {
+				baseHarness.Image = override.Image
+			}
+			if override.User != "" {
+				baseHarness.User = override.User
+			}
+		}
+	}
+
+	return baseHarness, nil
 }
 
 // LoadSettings loads and merges settings from the hierarchy.
 // Priority: Grove > Global > Defaults
 func LoadSettings(grovePath string) (*Settings, error) {
-	// 1. Start with App Defaults
+	// 1. Start with App Defaults from embedded JSON
 	settings := &Settings{
-		DefaultRuntime:  "docker",
-		DefaultTemplate: "gemini",
+		Runtimes:  make(map[string]RuntimeConfig),
+		Harnesses: make(map[string]HarnessConfig),
+		Profiles:  make(map[string]ProfileConfig),
+	}
+
+	if defaultData, err := GetDefaultSettingsData(); err == nil {
+		if err := MergeSettings(settings, defaultData); err != nil {
+			// This should not happen with embedded defaults
+		}
+	} else {
+		// Fallback to minimal hardcoded defaults if embed fails
+		settings.ActiveProfile = "local"
+		settings.DefaultTemplate = "gemini"
 	}
 
 	// 2. Merge Global (~/.scion/settings.json)
@@ -37,23 +108,19 @@ func LoadSettings(grovePath string) (*Settings, error) {
 	if err == nil {
 		globalSettingsPath := filepath.Join(globalDir, "settings.json")
 		if err := mergeSettingsFromFile(settings, globalSettingsPath); err != nil {
-			// Log warning or ignore if file just doesn't exist?
-			// For now, we ignore if it doesn't exist, but report parse errors
 			if !os.IsNotExist(err) {
-				return nil, fmt.Errorf("failed to load global settings: %w", err)
+				// We still return settings but maybe we should log this
 			}
 		}
 	}
 
 	// 3. Merge Grove settings
 	if grovePath != "" {
-		// grovePath already points to the .scion directory (or equivalent)
-		// We expect settings.json to be directly inside it.
 		groveSettingsPath := filepath.Join(grovePath, "settings.json")
 
 		if err := mergeSettingsFromFile(settings, groveSettingsPath); err != nil {
 			if !os.IsNotExist(err) {
-				return nil, fmt.Errorf("failed to load grove settings at %s: %w", groveSettingsPath, err)
+				// We still return settings
 			}
 		}
 	}
@@ -67,28 +134,80 @@ func mergeSettingsFromFile(base *Settings, path string) error {
 		return err
 	}
 
+	return MergeSettings(base, data)
+}
+
+func MergeSettings(base *Settings, data []byte) error {
 	var override Settings
 	if err := json.Unmarshal(data, &override); err != nil {
 		return err
 	}
 
-	// Manual merge of top-level fields
-	if override.DefaultRuntime != "" {
-		base.DefaultRuntime = override.DefaultRuntime
+	if override.ActiveProfile != "" {
+		base.ActiveProfile = override.ActiveProfile
 	}
 	if override.DefaultTemplate != "" {
 		base.DefaultTemplate = override.DefaultTemplate
 	}
 
-	if override.Kubernetes.DefaultContext != "" {
-		base.Kubernetes.DefaultContext = override.Kubernetes.DefaultContext
+	if override.Runtimes != nil {
+		if base.Runtimes == nil {
+			base.Runtimes = make(map[string]RuntimeConfig)
+		}
+		for k, v := range override.Runtimes {
+			existing := base.Runtimes[k]
+			if v.Host != "" {
+				existing.Host = v.Host
+			}
+			if v.Context != "" {
+				existing.Context = v.Context
+			}
+			if v.Namespace != "" {
+				existing.Namespace = v.Namespace
+			}
+			if v.Tmux != nil {
+				existing.Tmux = v.Tmux
+			}
+			base.Runtimes[k] = existing
+		}
 	}
-	if override.Kubernetes.DefaultNamespace != "" {
-		base.Kubernetes.DefaultNamespace = override.Kubernetes.DefaultNamespace
+	if override.Harnesses != nil {
+		if base.Harnesses == nil {
+			base.Harnesses = make(map[string]HarnessConfig)
+		}
+		for k, v := range override.Harnesses {
+			existing := base.Harnesses[k]
+			if v.Image != "" {
+				existing.Image = v.Image
+			}
+			if v.User != "" {
+				existing.User = v.User
+			}
+			base.Harnesses[k] = existing
+		}
 	}
-
-	if override.Docker.Host != "" {
-		base.Docker.Host = override.Docker.Host
+	if override.Profiles != nil {
+		if base.Profiles == nil {
+			base.Profiles = make(map[string]ProfileConfig)
+		}
+		for k, v := range override.Profiles {
+			existing := base.Profiles[k]
+			if v.Runtime != "" {
+				existing.Runtime = v.Runtime
+			}
+			if v.Tmux != nil {
+				existing.Tmux = v.Tmux
+			}
+			if v.HarnessOverrides != nil {
+				if existing.HarnessOverrides == nil {
+					existing.HarnessOverrides = make(map[string]HarnessOverride)
+				}
+				for hk, hv := range v.HarnessOverrides {
+					existing.HarnessOverrides[hk] = hv
+				}
+			}
+			base.Profiles[k] = existing
+		}
 	}
 
 	return nil
@@ -144,30 +263,21 @@ func UpdateSetting(grovePath string, key string, value string, global bool) erro
 	data, err := os.ReadFile(targetPath)
 	if err == nil {
 		if err := json.Unmarshal(data, &current); err != nil {
-			// If corrupt, maybe start fresh? Or error?
 			return fmt.Errorf("failed to parse existing settings at %s: %w", targetPath, err)
 		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
 
-	// Update the field
+	// Update the field - this logic needs to be more flexible for the new structure
+	// For now, support some basic ones
 	switch key {
-	case "default_runtime":
-		if err := validateRuntime(value); err != nil {
-			return err
-		}
-		current.DefaultRuntime = value
+	case "active_profile":
+		current.ActiveProfile = value
 	case "default_template":
 		current.DefaultTemplate = value
-	case "kubernetes.default_context":
-		current.Kubernetes.DefaultContext = value
-	case "kubernetes.default_namespace":
-		current.Kubernetes.DefaultNamespace = value
-	case "docker.host":
-		current.Docker.Host = value
 	default:
-		return fmt.Errorf("unknown setting key: %s", key)
+		return fmt.Errorf("unknown or complex setting key: %s (manual edit recommended for registries)", key)
 	}
 
 	// Save
@@ -183,36 +293,17 @@ func UpdateSetting(grovePath string, key string, value string, global bool) erro
 
 func GetSettingValue(s *Settings, key string) (string, error) {
 	switch key {
-	case "default_runtime":
-		return s.DefaultRuntime, nil
+	case "active_profile":
+		return s.ActiveProfile, nil
 	case "default_template":
 		return s.DefaultTemplate, nil
-	case "kubernetes.default_context":
-		return s.Kubernetes.DefaultContext, nil
-	case "kubernetes.default_namespace":
-		return s.Kubernetes.DefaultNamespace, nil
-	case "docker.host":
-		return s.Docker.Host, nil
 	}
-	return "", fmt.Errorf("unknown setting key: %s", key)
+	return "", fmt.Errorf("unknown or complex setting key: %s", key)
 }
 
-// Helper to inspect struct fields if needed for "list"
 func GetSettingsMap(s *Settings) map[string]string {
 	m := make(map[string]string)
-	m["default_runtime"] = s.DefaultRuntime
+	m["active_profile"] = s.ActiveProfile
 	m["default_template"] = s.DefaultTemplate
-	m["kubernetes.default_context"] = s.Kubernetes.DefaultContext
-	m["kubernetes.default_namespace"] = s.Kubernetes.DefaultNamespace
-	m["docker.host"] = s.Docker.Host
 	return m
-}
-
-func validateRuntime(r string) error {
-	switch r {
-	case "docker", "kubernetes", "local", "container", "remote":
-		return nil
-	default:
-		return fmt.Errorf("invalid runtime '%s'. Supported values: docker, kubernetes, local, remote", r)
-	}
 }

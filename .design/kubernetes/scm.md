@@ -105,7 +105,7 @@ The repository URL will be resolved using the following precedence:
 
 ### URL Normalization
 
-Since different auth methods require different URL formats, Scion will normalize URLs to support both HTTPS and SSH formats tailored to the selected authentication provider.
+Since different auth methods require different URL formats, Scion will normalize URLs to support both HTTPS and SSH formats tailored to the selected authentication harness.
 
 ## Authentication Strategies
 
@@ -155,7 +155,7 @@ When running on Google Kubernetes Engine (GKE), we can leverage GCP services for
     *   *Mechanism*: Define a `SecretProviderClass` that maps a GCP Secret Manager secret to a file mounted in the pod.
 *   **Workload Identity**: Use GKE Workload Identity to authorize the Pod (via its Service Account) to access the Secret Manager API without managing long-lived service account keys.
 
-#### Other Providers
+#### Other Harnesss
 - **GitLab**: Support for PATs (`oauth2:${TOKEN}`) and Deploy Tokens.
 - **Bitbucket**: App Passwords.
 - **Azure DevOps**: Personal Access Tokens.
@@ -196,7 +196,7 @@ For standard operations, the agent acts like a developer:
 2. `git add .` && `git commit`.
 3. `git push origin HEAD` (using the pre-configured credentials).
    > **Constraint**: The agent **must never push directly to protected branches** (like `main` or `master`). It should always push to its dedicated feature branch.
-4. Agent calls Provider API to open a PR.
+4. Agent calls Harness API to open a PR.
 
 #### Sync-Back (Development Mode)
 To pull changes from the remote pod to the local machine (for "live" feel):
@@ -212,7 +212,7 @@ To pull changes from the remote pod to the local machine (for "live" feel):
    - GitHub App tokens expire after 1 hour.
    - **V1**: Assume tasks complete within this window.
    - **V2**: Implement a sidecar or refresh mechanism for long-running agents.
-3. **Network Policies**: Restrict egress to allowed SCM providers (e.g., github.com:443).
+3. **Network Policies**: Restrict egress to allowed SCM harnesss (e.g., github.com:443).
 4. **Image Security**: Use minimal, verified images (e.g., `alpine/git` or distroless).
 5. **Audit Logging**: Track all git operations and clone events.
 

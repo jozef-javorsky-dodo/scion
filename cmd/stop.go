@@ -19,23 +19,21 @@ var stopCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentName := args[0]
 
-		effectiveRuntime := agentRuntime
-		if effectiveRuntime == "" {
-			effectiveRuntime = agent.GetSavedRuntime(agentName, grovePath)
+		effectiveProfile := profile
+		if effectiveProfile == "" {
+			effectiveProfile = agent.GetSavedProfile(agentName, grovePath)
 		}
 
-		rt := runtime.GetRuntime(grovePath, effectiveRuntime)
+		rt := runtime.GetRuntime(grovePath, effectiveProfile)
 		mgr := agent.NewManager(rt)
 
-		
 		fmt.Printf("Stopping agent '%s'...\n", agentName)
 		if err := mgr.Stop(context.Background(), agentName); err != nil {
 			return err
 		}
 
-		        _ = agent.UpdateAgentConfig(agentName, grovePath, "stopped", "")
-		if stopRm {
-			if err := mgr.Delete(context.Background(), agentName, true, grovePath); err != nil {
+		_ = agent.UpdateAgentConfig(agentName, grovePath, "stopped", "", "")
+				if stopRm {			if err := mgr.Delete(context.Background(), agentName, true, grovePath); err != nil {
 				return err
 			}
 			fmt.Printf("Agent '%s' stopped and removed.\n", agentName)
@@ -49,7 +47,6 @@ var stopCmd = &cobra.Command{
 
 func init() {
 	stopCmd.Flags().BoolVar(&stopRm, "rm", false, "Remove the agent after stopping")
-	stopCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "", "Runtime to use (local, remote, docker, kubernetes)")
 	rootCmd.AddCommand(stopCmd)
 }
 

@@ -84,7 +84,7 @@ When the user runs `scion run --runtime kubernetes`, the following sequence occu
         *   **Remote URL:** `api://<kube-context>/namespaces/<ns>/pods/<pod>/containers/<container>:/workspace` (or standard Mutagen K8s syntax).
         *   **Ignore VCS:** We explicitly **ignore `.git/`**. This is critical. The agent operates on the *files* (the checkout), but the *repository history and index* remain exclusively under local user control. This prevents the agent from making commits that might conflict or corrupt the local repo state.
     *   **Network Forwarding (Optional/Auto):**
-        *   If the agent template specifies ports (e.g., `3000:3000`), or if `scion.json` has config:
+        *   If the agent template specifies ports (e.g., `3000:3000`), or if `scion-agent.json` has config:
         ```bash
         mutagen forward create \
           --name=scion-net-<agent-name> \
@@ -133,7 +133,7 @@ When the user runs `scion run --runtime kubernetes`, the following sequence occu
 
 ## Configuration & Customization
 
-Configuration is handled in `.scion/agents/<agent-name>/scion.json` or global settings.
+Configuration is handled in `.scion/agents/<agent-name>/scion-agent.json` or global settings.
 
 ```json
 {

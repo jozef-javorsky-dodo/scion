@@ -11,9 +11,6 @@ func TestLoadSettings(t *testing.T) {
 	// Create temporary directories for global and grove settings
 	tmpDir := t.TempDir()
 
-	// Mock HOME for global settings
-	// We can't easily mock GetGlobalDir() as it likely uses os.UserHomeDir
-	// but we can set HOME env var.
 	originalHome := os.Getenv("HOME")
 	defer os.Setenv("HOME", originalHome)
 	os.Setenv("HOME", tmpDir)
@@ -29,8 +26,8 @@ func TestLoadSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSettings failed: %v", err)
 	}
-	if s.DefaultRuntime != "docker" {
-		t.Errorf("expected default runtime 'docker', got '%s'", s.DefaultRuntime)
+	if s.ActiveProfile != "local" {
+		t.Errorf("expected active profile 'local', got '%s'", s.ActiveProfile)
 	}
 	if s.DefaultTemplate != "gemini" {
 		t.Errorf("expected default template 'gemini', got '%s'", s.DefaultTemplate)
@@ -38,10 +35,13 @@ func TestLoadSettings(t *testing.T) {
 
 	// 2. Test Global overrides
 	globalSettings := `{
-		"default_runtime": "kubernetes",
+		"active_profile": "prod",
 		"default_template": "claude",
-		"kubernetes": {
-			"default_namespace": "scion-global"
+		"runtimes": {
+			"kubernetes": { "namespace": "scion-global" }
+		},
+		"profiles": {
+			"prod": { "runtime": "kubernetes", "tmux": false }
 		}
 	}`
 	globalScionDir := filepath.Join(tmpDir, ".scion")
@@ -56,21 +56,21 @@ func TestLoadSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSettings failed: %v", err)
 	}
-	if s.DefaultRuntime != "kubernetes" {
-		t.Errorf("expected global override runtime 'kubernetes', got '%s'", s.DefaultRuntime)
+	if s.ActiveProfile != "prod" {
+		t.Errorf("expected global override active_profile 'prod', got '%s'", s.ActiveProfile)
 	}
 	if s.DefaultTemplate != "claude" {
 		t.Errorf("expected global override template 'claude', got '%s'", s.DefaultTemplate)
 	}
-	if s.Kubernetes.DefaultNamespace != "scion-global" {
-		t.Errorf("expected global override namespace 'scion-global', got '%s'", s.Kubernetes.DefaultNamespace)
+	if s.Runtimes["kubernetes"].Namespace != "scion-global" {
+		t.Errorf("expected global override runtime namespace 'scion-global', got '%s'", s.Runtimes["kubernetes"].Namespace)
 	}
 
 	// 3. Test Grove overrides
 	groveSettings := `{
-		"default_runtime": "docker",
-		"kubernetes": {
-			"default_context": "gke-dev"
+		"active_profile": "local-dev",
+		"profiles": {
+			"local-dev": { "runtime": "local", "tmux": true }
 		}
 	}`
 	if err := os.WriteFile(filepath.Join(groveScionDir, "settings.json"), []byte(groveSettings), 0644); err != nil {
@@ -81,17 +81,12 @@ func TestLoadSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSettings failed: %v", err)
 	}
-	// Should be back to docker because grove overrides global
-	if s.DefaultRuntime != "docker" {
-		t.Errorf("expected grove override runtime 'docker', got '%s'", s.DefaultRuntime)
+	if s.ActiveProfile != "local-dev" {
+		t.Errorf("expected grove override active_profile 'local-dev', got '%s'", s.ActiveProfile)
 	}
-	// Namespace should still be global
-	if s.Kubernetes.DefaultNamespace != "scion-global" {
-		t.Errorf("expected inherited global namespace 'scion-global', got '%s'", s.Kubernetes.DefaultNamespace)
-	}
-	// Context should be grove
-	if s.Kubernetes.DefaultContext != "gke-dev" {
-		t.Errorf("expected grove context 'gke-dev', got '%s'", s.Kubernetes.DefaultContext)
+	// Template should still be claude from global
+	if s.DefaultTemplate != "claude" {
+		t.Errorf("expected inherited global template 'claude', got '%s'", s.DefaultTemplate)
 	}
 }
 
@@ -108,7 +103,7 @@ func TestUpdateSetting(t *testing.T) {
 	}
 
 	// Update local setting
-	err := UpdateSetting(groveScionDir, "default_runtime", "kubernetes", false)
+	err := UpdateSetting(groveScionDir, "active_profile", "kubernetes", false)
 	if err != nil {
 		t.Fatalf("UpdateSetting failed: %v", err)
 	}
@@ -118,8 +113,8 @@ func TestUpdateSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(content), `"default_runtime": "kubernetes"`) {
-		t.Errorf("expected file to contain default_runtime: kubernetes, got %s", string(content))
+	if !strings.Contains(string(content), `"active_profile": "kubernetes"`) {
+		t.Errorf("expected file to contain active_profile: kubernetes, got %s", string(content))
 	}
 
 	// Update default_template
@@ -131,61 +126,46 @@ func TestUpdateSetting(t *testing.T) {
 	if !strings.Contains(string(content), `"default_template": "my-template"`) {
 		t.Errorf("expected file to contain default_template: my-template, got %s", string(content))
 	}
-
-	// Update global setting
-	err = UpdateSetting(groveScionDir, "docker.host", "tcp://localhost:2375", true)
-	if err != nil {
-		t.Fatalf("UpdateSetting global failed: %v", err)
-	}
-
-	// Verify global file content
-	content, err = os.ReadFile(filepath.Join(tmpDir, ".scion", "settings.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(content), `"host": "tcp://localhost:2375"`) {
-		t.Errorf("expected global file to contain host: tcp://localhost:2375, got %s", string(content))
-	}
 }
 
-func TestValidateRuntime(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"docker", true},
-		{"kubernetes", true},
-		{"local", true},
-		{"container", true},
-		{"remote", true},
-		{"invalid", false},
-		{"", false},
+func TestResolve(t *testing.T) {
+	s := &Settings{
+		ActiveProfile: "local",
+		Runtimes: map[string]RuntimeConfig{
+			"docker": {Host: "unix:///var/run/docker.sock"},
+		},
+		Harnesses: map[string]HarnessConfig{
+			"gemini": {Image: "gemini:latest", User: "root"},
+		},
+		Profiles: map[string]ProfileConfig{
+			"local": {
+				Runtime: "docker",
+				HarnessOverrides: map[string]HarnessOverride{
+					"gemini": {Image: "gemini:dev"},
+				},
+			},
+		},
 	}
 
-	// We can't access private validateRuntime directly if it is not exported.
-	// But UpdateSetting calls it.
-
-	tmpDir := t.TempDir()
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
-	os.Setenv("HOME", tmpDir)
-
-	groveDir := filepath.Join(tmpDir, "my-grove")
-	groveScionDir := filepath.Join(groveDir, ".scion")
-	if err := os.MkdirAll(groveScionDir, 0755); err != nil {
+	runtime, name, err := s.ResolveRuntime("")
+	if err != nil {
 		t.Fatal(err)
 	}
+	if name != "docker" {
+		t.Errorf("expected runtime name docker, got %s", name)
+	}
+	if runtime.Host != "unix:///var/run/docker.sock" {
+		t.Errorf("expected host unix:///var/run/docker.sock, got %s", runtime.Host)
+	}
 
-	for _, tt := range tests {
-		err := UpdateSetting(groveScionDir, "default_runtime", tt.input, false)
-		if tt.want {
-			if err != nil {
-				t.Errorf("UpdateSetting(%q) failed: %v", tt.input, err)
-			}
-		} else {
-			if err == nil {
-				t.Errorf("UpdateSetting(%q) should have failed", tt.input)
-			}
-		}
+	harness, err := s.ResolveHarness("", "gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if harness.Image != "gemini:dev" {
+		t.Errorf("expected image gemini:dev, got %s", harness.Image)
+	}
+	if harness.User != "root" {
+		t.Errorf("expected user root, got %s", harness.User)
 	}
 }

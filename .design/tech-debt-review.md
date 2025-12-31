@@ -6,16 +6,16 @@ This document tracks findings from a deep technical debt review of the Scion Age
 ## Findings
 
 ### 1. Harness Abstraction Leaks
-The `Harness` interface is currently focused on the runtime execution phase (generating commands, env vars), but it lacks proper hooks for the provisioning phase. This has led to abstraction leaks where provider-specific logic resides in the core `agent` package.
+The `Harness` interface is currently focused on the runtime execution phase (generating commands, env vars), but it lacks proper hooks for the provisioning phase. This has led to abstraction leaks where harness-specific logic resides in the core `agent` package.
 
 -   **Provisioning Leak**: `pkg/agent/provision.go` contains `UpdateClaudeJSON`, which directly manipulates Claude-specific configuration files. This function should be part of the `ClaudeCode` harness implementation.
--   **Template Seeding Leak**: `pkg/config/init.go`'s `SeedTemplateDir` contains hardcoded `if harnessProvider == "claude"` logic to determine directory names (`.claude` vs `.gemini`) and file lookups. This prevents adding new providers without modifying core config code.
+-   **Template Seeding Leak**: `pkg/config/init.go`'s `SeedTemplateDir` contains hardcoded `if harness == "claude"` logic to determine directory names (`.claude` vs `.gemini`) and file lookups. This prevents adding new harnesss without modifying core config code.
 -   **Missing Lifecycle Hooks**: The `Harness` interface needs methods like `OnProvision(agentHome string)` or `ConfigureAgent(agentConfig *api.ScionConfig)` to encapsulate setup logic.
 
 ### 2. Configuration & Settings Scalability
-The configuration system uses strong typing that couples the core `Settings` struct to every supported runtime and provider.
+The configuration system uses strong typing that couples the core `Settings` struct to every supported runtime and harness.
 
--   **Monolithic Settings Struct**: `pkg/config/settings.go` defines `Settings` with specific fields for `Kubernetes` and `Docker`. As we add more runtimes (e.g., `Firecracker`, `Remote`) or providers, this struct will grow indefinitely.
+-   **Monolithic Settings Struct**: `pkg/config/settings.go` defines `Settings` with specific fields for `Kubernetes` and `Docker`. As we add more runtimes (e.g., `Firecracker`, `Remote`) or harnesss, this struct will grow indefinitely.
 -   **Recommendation**: Move to a more dynamic structure for runtime-specific settings (e.g., `map[string]interface{}` or `json.RawMessage`) or a registry pattern where runtimes define their own config schemas.
 -   **Error Handling**: `LoadSettings` suppresses some errors (e.g., corrupt files) which might lead to silent failures or unexpected defaults.
 
@@ -37,7 +37,7 @@ The `Start` function in `pkg/agent/run.go` is becoming a "god function" for runt
 
 ### 6. Future Control Plane Alignment
 -   The current file-based status and config are sufficient for CLI usage but will require significant refactoring for the proposed API-based Control Plane (`control-plane-design.md`).
--   **State**: Agent state is currently "fire and forget" in `scion.json` or calculated from container status. A persistent state store will be needed.
+-   **State**: Agent state is currently "fire and forget" in `scion-agent.json` or calculated from container status. A persistent state store will be needed.
 
 ## Proposed Action Items
 

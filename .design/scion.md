@@ -53,8 +53,8 @@ Each agent runs in a dedicated container with strictly isolated resources.
 - **Filesystem**:
   - **Host Path**: `.scion/agents/<agent-name>/home` (Project) or `~/.scion/agents/...` (Playground).
   - **Container Mount**: `/home/gemini`.
-  - **Contents**: Populated from the template at startup. Includes unique `settings.json`, `.config/gcloud`, persistent `.gemini/history`, and an updated `scion.json` containing agent-specific metadata.
-- **Namespace Labeling**: Every agent container is labeled with `scion.grove=<grove-name>`. This grove name is also written to an `agent` section in the `scion.json` file within the agent's home directory.
+  - **Contents**: Populated from the template at startup. Includes unique `settings.json`, `.config/gcloud`, persistent `.gemini/history`, and an updated `scion-agent.json` containing agent-specific metadata.
+- **Namespace Labeling**: Every agent container is labeled with `scion.grove=<grove-name>`. This grove name is also written to an `agent` section in the `scion-agent.json` file within the agent's home directory.
 - **Network**:
   - Agents share the `gemini-cli-sandbox` bridge network but are otherwise isolated.
 
