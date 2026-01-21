@@ -179,9 +179,16 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		template = finalScionCfg.Info.Template
 	}
 
+	// Determine the effective workspace path. If agentWorkspace is empty but we have
+	// a volume mounted to /workspace (e.g., shared worktree case), use that source path.
+	effectiveWorkspace := agentWorkspace
+	if effectiveWorkspace == "" && finalScionCfg != nil {
+		effectiveWorkspace = extractWorkspaceFromVolumes(finalScionCfg.Volumes)
+	}
+
 	repoRoot := ""
-	if agentWorkspace != "" && util.IsGitRepoDir(agentWorkspace) {
-		commonDir, err := util.GetCommonGitDir(agentWorkspace)
+	if effectiveWorkspace != "" && util.IsGitRepoDir(effectiveWorkspace) {
+		commonDir, err := util.GetCommonGitDir(effectiveWorkspace)
 		if err == nil {
 			repoRoot = filepath.Dir(commonDir)
 		}
@@ -195,7 +202,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		UnixUsername: unixUsername,
 		Image:        resolvedImage,
 		HomeDir:      agentHome,
-		Workspace:    agentWorkspace,
+		Workspace:    effectiveWorkspace,
 		RepoRoot:     repoRoot,
 		Auth:         auth,
 		Harness:      h,
@@ -214,10 +221,16 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		}(),
 		Env:          agentEnv,
 		Volumes: func() []api.VolumeMount {
-			if finalScionCfg != nil {
-				return finalScionCfg.Volumes
+			if finalScionCfg == nil {
+				return nil
 			}
-			return nil
+			// If we extracted effectiveWorkspace from a /workspace volume mount,
+			// filter it out to avoid a duplicate mount (the buildCommonRunArgs
+			// will handle the workspace mount properly with worktree support).
+			if effectiveWorkspace != "" && effectiveWorkspace != agentWorkspace {
+				return filterWorkspaceVolume(finalScionCfg.Volumes)
+			}
+			return finalScionCfg.Volumes
 		}(),
 		Kubernetes: func() *api.KubernetesConfig {
 			if finalScionCfg != nil {
@@ -265,6 +278,30 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	}
 
 	return &api.AgentInfo{ID: id, Name: opts.Name, Status: status, Detached: detached, Warnings: warnings}, nil
+}
+
+// extractWorkspaceFromVolumes finds a volume mounted to /workspace and returns its source path.
+// This is used when an agent shares an existing worktree from another agent.
+func extractWorkspaceFromVolumes(volumes []api.VolumeMount) string {
+	for _, v := range volumes {
+		if v.Target == "/workspace" {
+			return v.Source
+		}
+	}
+	return ""
+}
+
+// filterWorkspaceVolume removes volumes targeting /workspace from the list.
+// This is used when the workspace will be handled by the RepoRoot/Workspace logic
+// in buildCommonRunArgs instead of as a generic volume mount.
+func filterWorkspaceVolume(volumes []api.VolumeMount) []api.VolumeMount {
+	var filtered []api.VolumeMount
+	for _, v := range volumes {
+		if v.Target != "/workspace" {
+			filtered = append(filtered, v)
+		}
+	}
+	return filtered
 }
 
 func buildAgentEnv(scionCfg *api.ScionConfig, extraEnv map[string]string) ([]string, []string) {

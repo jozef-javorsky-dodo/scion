@@ -8,6 +8,113 @@ import (
 	"github.com/ptone/scion-agent/pkg/api"
 )
 
+func TestExtractWorkspaceFromVolumes(t *testing.T) {
+	tests := []struct {
+		name     string
+		volumes  []api.VolumeMount
+		expected string
+	}{
+		{
+			name:     "empty volumes",
+			volumes:  nil,
+			expected: "",
+		},
+		{
+			name: "no workspace volume",
+			volumes: []api.VolumeMount{
+				{Source: "/host/data", Target: "/data"},
+				{Source: "/host/config", Target: "/config"},
+			},
+			expected: "",
+		},
+		{
+			name: "has workspace volume",
+			volumes: []api.VolumeMount{
+				{Source: "/host/data", Target: "/data"},
+				{Source: "/path/to/shared/worktree", Target: "/workspace"},
+				{Source: "/host/config", Target: "/config"},
+			},
+			expected: "/path/to/shared/worktree",
+		},
+		{
+			name: "first workspace volume wins",
+			volumes: []api.VolumeMount{
+				{Source: "/first/workspace", Target: "/workspace"},
+				{Source: "/second/workspace", Target: "/workspace"},
+			},
+			expected: "/first/workspace",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractWorkspaceFromVolumes(tt.volumes)
+			if result != tt.expected {
+				t.Errorf("extractWorkspaceFromVolumes() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFilterWorkspaceVolume(t *testing.T) {
+	tests := []struct {
+		name           string
+		volumes        []api.VolumeMount
+		expectedLen    int
+		expectedAbsent string
+	}{
+		{
+			name:           "empty volumes",
+			volumes:        nil,
+			expectedLen:    0,
+			expectedAbsent: "/workspace",
+		},
+		{
+			name: "no workspace volume",
+			volumes: []api.VolumeMount{
+				{Source: "/host/data", Target: "/data"},
+				{Source: "/host/config", Target: "/config"},
+			},
+			expectedLen:    2,
+			expectedAbsent: "/workspace",
+		},
+		{
+			name: "filters workspace volume",
+			volumes: []api.VolumeMount{
+				{Source: "/host/data", Target: "/data"},
+				{Source: "/path/to/worktree", Target: "/workspace"},
+				{Source: "/host/config", Target: "/config"},
+			},
+			expectedLen:    2,
+			expectedAbsent: "/workspace",
+		},
+		{
+			name: "filters multiple workspace volumes",
+			volumes: []api.VolumeMount{
+				{Source: "/first", Target: "/workspace"},
+				{Source: "/second", Target: "/workspace"},
+				{Source: "/host/data", Target: "/data"},
+			},
+			expectedLen:    1,
+			expectedAbsent: "/workspace",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filterWorkspaceVolume(tt.volumes)
+			if len(result) != tt.expectedLen {
+				t.Errorf("filterWorkspaceVolume() returned %d volumes, want %d", len(result), tt.expectedLen)
+			}
+			for _, v := range result {
+				if v.Target == tt.expectedAbsent {
+					t.Errorf("filterWorkspaceVolume() should have removed volume with target %q", tt.expectedAbsent)
+				}
+			}
+		})
+	}
+}
+
 func TestBuildAgentEnv(t *testing.T) {
 	// Setup host env for inheritance test
 	os.Setenv("INHERITED_KEY", "inherited-value")
