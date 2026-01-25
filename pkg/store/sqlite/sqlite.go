@@ -51,6 +51,7 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	migrations := []string{
 		migrationV1,
 		migrationV2,
+		migrationV3,
 	}
 
 	// Create migrations table if not exists
@@ -234,6 +235,12 @@ const migrationV2 = `
 -- Add default runtime host to groves
 ALTER TABLE groves ADD COLUMN default_runtime_host_id TEXT REFERENCES runtime_hosts(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_groves_default_runtime_host ON groves(default_runtime_host_id);
+`
+
+// Migration V3: Add local_path to grove_contributors
+const migrationV3 = `
+-- Add local_path column to grove_contributors for tracking filesystem paths per host
+ALTER TABLE grove_contributors ADD COLUMN local_path TEXT;
 `
 
 // Helper functions for JSON marshaling/unmarshaling
@@ -1420,10 +1427,10 @@ func (s *SQLiteStore) ListUsers(ctx context.Context, filter store.UserFilter, op
 
 func (s *SQLiteStore) AddGroveContributor(ctx context.Context, contrib *store.GroveContributor) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO grove_contributors (grove_id, host_id, host_name, mode, status, profiles, last_seen)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT OR REPLACE INTO grove_contributors (grove_id, host_id, host_name, local_path, mode, status, profiles, last_seen)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		contrib.GroveID, contrib.HostID, contrib.HostName, contrib.Mode, contrib.Status,
+		contrib.GroveID, contrib.HostID, contrib.HostName, contrib.LocalPath, contrib.Mode, contrib.Status,
 		marshalJSON(contrib.Profiles), contrib.LastSeen,
 	)
 	return err
@@ -1444,9 +1451,40 @@ func (s *SQLiteStore) RemoveGroveContributor(ctx context.Context, groveID, hostI
 	return nil
 }
 
+func (s *SQLiteStore) GetGroveContributor(ctx context.Context, groveID, hostID string) (*store.GroveContributor, error) {
+	var contrib store.GroveContributor
+	var localPath sql.NullString
+	var profiles string
+	var lastSeen sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT grove_id, host_id, host_name, local_path, mode, status, profiles, last_seen
+		FROM grove_contributors WHERE grove_id = ? AND host_id = ?
+	`, groveID, hostID).Scan(
+		&contrib.GroveID, &contrib.HostID, &contrib.HostName, &localPath, &contrib.Mode, &contrib.Status,
+		&profiles, &lastSeen,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, store.ErrNotFound
+		}
+		return nil, err
+	}
+
+	if localPath.Valid {
+		contrib.LocalPath = localPath.String
+	}
+	if lastSeen.Valid {
+		contrib.LastSeen = lastSeen.Time
+	}
+	unmarshalJSON(profiles, &contrib.Profiles)
+
+	return &contrib, nil
+}
+
 func (s *SQLiteStore) GetGroveContributors(ctx context.Context, groveID string) ([]store.GroveContributor, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT grove_id, host_id, host_name, mode, status, profiles, last_seen
+		SELECT grove_id, host_id, host_name, local_path, mode, status, profiles, last_seen
 		FROM grove_contributors WHERE grove_id = ?
 	`, groveID)
 	if err != nil {
@@ -1457,16 +1495,20 @@ func (s *SQLiteStore) GetGroveContributors(ctx context.Context, groveID string) 
 	var contributors []store.GroveContributor
 	for rows.Next() {
 		var contrib store.GroveContributor
+		var localPath sql.NullString
 		var profiles string
 		var lastSeen sql.NullTime
 
 		if err := rows.Scan(
-			&contrib.GroveID, &contrib.HostID, &contrib.HostName, &contrib.Mode, &contrib.Status,
+			&contrib.GroveID, &contrib.HostID, &contrib.HostName, &localPath, &contrib.Mode, &contrib.Status,
 			&profiles, &lastSeen,
 		); err != nil {
 			return nil, err
 		}
 
+		if localPath.Valid {
+			contrib.LocalPath = localPath.String
+		}
 		if lastSeen.Valid {
 			contrib.LastSeen = lastSeen.Time
 		}
@@ -1480,7 +1522,7 @@ func (s *SQLiteStore) GetGroveContributors(ctx context.Context, groveID string) 
 
 func (s *SQLiteStore) GetHostGroves(ctx context.Context, hostID string) ([]store.GroveContributor, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT grove_id, host_id, host_name, mode, status, profiles, last_seen
+		SELECT grove_id, host_id, host_name, local_path, mode, status, profiles, last_seen
 		FROM grove_contributors WHERE host_id = ?
 	`, hostID)
 	if err != nil {
@@ -1491,16 +1533,20 @@ func (s *SQLiteStore) GetHostGroves(ctx context.Context, hostID string) ([]store
 	var contributors []store.GroveContributor
 	for rows.Next() {
 		var contrib store.GroveContributor
+		var localPath sql.NullString
 		var profiles string
 		var lastSeen sql.NullTime
 
 		if err := rows.Scan(
-			&contrib.GroveID, &contrib.HostID, &contrib.HostName, &contrib.Mode, &contrib.Status,
+			&contrib.GroveID, &contrib.HostID, &contrib.HostName, &localPath, &contrib.Mode, &contrib.Status,
 			&profiles, &lastSeen,
 		); err != nil {
 			return nil, err
 		}
 
+		if localPath.Valid {
+			contrib.LocalPath = localPath.String
+		}
 		if lastSeen.Valid {
 			contrib.LastSeen = lastSeen.Time
 		}

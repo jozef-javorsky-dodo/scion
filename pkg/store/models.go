@@ -170,13 +170,14 @@ type HostRuntime struct {
 
 // GroveContributor links a runtime host to a grove.
 type GroveContributor struct {
-	GroveID  string   `json:"groveId"`
-	HostID   string   `json:"hostId"`
-	HostName string   `json:"hostName"`
-	Mode     string   `json:"mode"`     // connected, read-only
-	Status   string   `json:"status"`   // online, offline
-	Profiles []string `json:"profiles"` // Profiles this host can execute
-	LastSeen time.Time `json:"lastSeen,omitempty"`
+	GroveID   string    `json:"groveId"`
+	HostID    string    `json:"hostId"`
+	HostName  string    `json:"hostName"`
+	LocalPath string    `json:"localPath,omitempty"` // Filesystem path to the grove on this host (e.g., ~/.scion or /path/to/project/.scion)
+	Mode      string    `json:"mode"`                // connected, read-only
+	Status    string    `json:"status"`              // online, offline
+	Profiles  []string  `json:"profiles"`            // Profiles this host can execute
+	LastSeen  time.Time `json:"lastSeen,omitempty"`
 }
 
 // Template represents an agent template in the Hub database.

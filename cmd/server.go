@@ -252,7 +252,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 	// for automatic agent handoff and register the global grove.
 	if enableHub && cfg.RuntimeHost.Enabled && s != nil && hubSrv != nil && mgr != nil {
 		// Set up the dispatcher to enable automatic agent handoff
-		dispatcher := newAgentDispatcherAdapter(mgr, s)
+		dispatcher := newAgentDispatcherAdapter(mgr, s, hostID)
 		hubSrv.SetDispatcher(dispatcher)
 		log.Printf("Agent dispatcher configured for co-located runtime host")
 
@@ -360,15 +360,23 @@ func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, host
 		}
 	}
 
+	// Get the global grove path (~/.scion)
+	globalPath, err := config.GetGlobalDir()
+	if err != nil {
+		log.Printf("Warning: failed to get global grove path: %v", err)
+		globalPath = "" // Will work but agents may not find the right path
+	}
+
 	// Add runtime host as contributor to global grove
 	contrib := &store.GroveContributor{
-		GroveID:  globalGrove.ID,
-		HostID:   hostID,
-		HostName: hostName,
-		Mode:     store.HostModeConnected,
-		Status:   store.HostStatusOnline,
-		Profiles: []string{}, // All profiles
-		LastSeen: time.Now(),
+		GroveID:   globalGrove.ID,
+		HostID:    hostID,
+		HostName:  hostName,
+		LocalPath: globalPath, // ~/.scion for the global grove
+		Mode:      store.HostModeConnected,
+		Status:    store.HostStatusOnline,
+		Profiles:  []string{}, // All profiles
+		LastSeen:  time.Now(),
 	}
 
 	if err := s.AddGroveContributor(ctx, contrib); err != nil {
@@ -390,19 +398,32 @@ func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, host
 type agentDispatcherAdapter struct {
 	manager agent.Manager
 	store   store.Store
+	hostID  string // The ID of this runtime host
 }
 
 // newAgentDispatcherAdapter creates a new dispatcher adapter.
-func newAgentDispatcherAdapter(mgr agent.Manager, s store.Store) *agentDispatcherAdapter {
+func newAgentDispatcherAdapter(mgr agent.Manager, s store.Store, hostID string) *agentDispatcherAdapter {
 	return &agentDispatcherAdapter{
 		manager: mgr,
 		store:   s,
+		hostID:  hostID,
 	}
 }
 
 // DispatchAgentCreate implements hub.AgentDispatcher.
 // It starts the agent on the runtime host and updates the hub store with runtime info.
 func (d *agentDispatcherAdapter) DispatchAgentCreate(ctx context.Context, hubAgent *store.Agent) error {
+	// Look up the local path for this grove on this runtime host
+	var grovePath string
+	if hubAgent.GroveID != "" && d.hostID != "" {
+		contrib, err := d.store.GetGroveContributor(ctx, hubAgent.GroveID, d.hostID)
+		if err != nil {
+			log.Printf("Warning: failed to get grove contributor for path lookup: %v", err)
+		} else if contrib.LocalPath != "" {
+			grovePath = contrib.LocalPath
+		}
+	}
+
 	// Build StartOptions from the hub agent record
 	env := make(map[string]string)
 	if hubAgent.AppliedConfig != nil && hubAgent.AppliedConfig.Env != nil {
@@ -416,11 +437,12 @@ func (d *agentDispatcherAdapter) DispatchAgentCreate(ctx context.Context, hubAge
 	hubAgent.Labels["scion.grove"] = hubAgent.GroveID
 
 	opts := api.StartOptions{
-		Name:     hubAgent.Name,
-		Template: hubAgent.Template,
-		Image:    hubAgent.Image,
-		Env:      env,
-		Detached: &hubAgent.Detached,
+		Name:      hubAgent.Name,
+		Template:  hubAgent.Template,
+		Image:     hubAgent.Image,
+		Env:       env,
+		Detached:  &hubAgent.Detached,
+		GrovePath: grovePath, // Pass the local filesystem path for this grove
 	}
 
 	if hubAgent.AppliedConfig != nil {

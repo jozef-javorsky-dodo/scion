@@ -665,12 +665,13 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 
 		// Add as grove contributor
 		contrib := &store.GroveContributor{
-			GroveID:  grove.ID,
-			HostID:   host.ID,
-			HostName: host.Name,
-			Mode:     host.Mode,
-			Status:   store.HostStatusOnline,
-			Profiles: req.Profiles,
+			GroveID:   grove.ID,
+			HostID:    host.ID,
+			HostName:  host.Name,
+			LocalPath: req.Path, // Filesystem path to the grove on this host
+			Mode:      host.Mode,
+			Status:    store.HostStatusOnline,
+			Profiles:  req.Profiles,
 		}
 
 		if err := s.store.AddGroveContributor(ctx, contrib); err != nil {

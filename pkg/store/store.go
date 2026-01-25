@@ -236,6 +236,10 @@ type GroveContributorStore interface {
 	// RemoveGroveContributor removes a host from a grove's contributors.
 	RemoveGroveContributor(ctx context.Context, groveID, hostID string) error
 
+	// GetGroveContributor returns a specific contributor by grove and host ID.
+	// Returns ErrNotFound if the contributor relationship doesn't exist.
+	GetGroveContributor(ctx context.Context, groveID, hostID string) (*GroveContributor, error)
+
 	// GetGroveContributors returns all contributors to a grove.
 	GetGroveContributors(ctx context.Context, groveID string) ([]GroveContributor, error)
 

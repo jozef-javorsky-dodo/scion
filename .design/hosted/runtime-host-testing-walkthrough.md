@@ -423,6 +423,97 @@ Use the grove-scoped endpoint to list agents for a specific grove:
 curl -s "http://localhost:9810/api/v1/groves/${GROVE_ID}/agents" | jq
 ```
 
+## 5b. Project-Specific Grove Testing
+
+This section demonstrates registering a local project as a grove and creating agents within it. This is the typical workflow for project-specific agent management.
+
+### Test Setup
+
+For this test, we'll use an existing local project at `/Users/ptone/src/cli-projects/qa-scion`.
+
+### Step 1: Verify the Project Has a .scion Directory
+
+```bash
+ls -la /Users/ptone/src/cli-projects/qa-scion/.scion
+```
+
+If it doesn't exist, you can initialize it:
+
+```bash
+cd /Users/ptone/src/cli-projects/qa-scion && scion init
+```
+
+### Step 2: Register the Project Grove with Local Path
+
+The key difference from the global grove is that we provide the `path` field to specify where the grove is located on this host:
+
+```bash
+HOST_ID=$(curl -s http://localhost:9800/api/v1/info | jq -r '.hostId')
+
+PROJECT_RESPONSE=$(curl -s -X POST http://localhost:9810/api/v1/groves/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "QA Scion",
+    "gitRemote": "https://github.com/example/qa-scion",
+    "path": "/Users/ptone/src/cli-projects/qa-scion/.scion",
+    "host": {
+      "id": "'$HOST_ID'",
+      "name": "Local Mac",
+      "version": "0.1.0",
+      "runtimes": [{"type": "container", "available": true}],
+      "capabilities": {"sync": true, "attach": true}
+    }
+  }')
+
+echo $PROJECT_RESPONSE | jq
+PROJECT_GROVE_ID=$(echo $PROJECT_RESPONSE | jq -r '.grove.id')
+echo "Project Grove ID: $PROJECT_GROVE_ID"
+```
+
+### Step 3: Verify the Grove Contributor Has the Local Path
+
+```bash
+# The contributor record should now include the local path
+curl -s "http://localhost:9810/api/v1/runtime-hosts?groveId=$PROJECT_GROVE_ID" | jq
+```
+
+### Step 4: Create an Agent in the Project Grove
+
+```bash
+curl -s -X POST "http://localhost:9810/api/v1/groves/${PROJECT_GROVE_ID}/agents" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "project-agent",
+    "template": "claude",
+    "task": "Hello! Please describe the project structure in /workspace"
+  }' | jq
+```
+
+### Step 5: Verify Agent is Using the Project Path
+
+The agent should now be running with the project's workspace mounted. Check the agent on the runtime host:
+
+```bash
+curl -s http://localhost:9800/api/v1/agents/project-agent | jq
+```
+
+The agent's container will have `/Users/ptone/src/cli-projects/qa-scion` as its workspace source, properly mounted at `/workspace` inside the container.
+
+### Step 6: Clean Up
+
+```bash
+curl -s -X DELETE "http://localhost:9800/api/v1/agents/project-agent?deleteFiles=true"
+```
+
+### Key Differences: Global vs Project Groves
+
+| Aspect | Global Grove | Project Grove |
+|--------|--------------|---------------|
+| Path | `~/.scion` (automatic) | Explicit `path` in registration |
+| Created | Auto-created on server start | Manual registration required |
+| Workspace | Current directory or empty | Project directory mounted |
+| Git Worktrees | Not applicable | Used for isolated agent branches |
+
 ## 6. Read-Only Mode Testing
 
 Start the Runtime Host in read-only mode:
