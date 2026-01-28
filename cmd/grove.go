@@ -57,12 +57,18 @@ With --global, it initializes in the user's home folder.`,
 		}
 
 		// Check for nested grove - error if already inside a scion project
-		if _, rootDir, found := config.GetEnclosingGrovePath(); found {
+		if grovePath, rootDir, found := config.GetEnclosingGrovePath(); found {
 			wd, _ := os.Getwd()
 			if filepath.Clean(wd) == filepath.Clean(rootDir) {
 				return fmt.Errorf("already inside a scion project at %s. skipping re-initialization", rootDir)
 			}
-			return fmt.Errorf("already inside a scion project at %s. Nested groves are not supported", rootDir)
+			// Allow initialization if the found grove is the global one
+			// This permits project groves to exist when ~/.scion exists
+			globalDir, err := config.GetGlobalDir()
+			if err != nil || filepath.Clean(grovePath) != filepath.Clean(globalDir) {
+				return fmt.Errorf("already inside a scion project at %s. Nested groves are not supported", rootDir)
+			}
+			// Found grove is the global one - allow project initialization to proceed
 		}
 
 		// Determine target directory
