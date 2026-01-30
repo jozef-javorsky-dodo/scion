@@ -13,6 +13,7 @@ This document specifies the authentication mechanisms for Scion's hosted mode. A
 |---------|-------------|-------------|---------------|
 | Web Dashboard | Browser | OAuth + Session Cookie | HTTP-only cookie |
 | CLI (Hub Commands) | Terminal | OAuth + Device Flow | Local file (`~/.scion/credentials.json`) |
+| Agent (sciontool) | Container | Hub-issued JWT | Environment Variable (`SCION_HUB_TOKEN`) |
 | API Direct | Programmatic | API Key or JWT | Client-managed |
 | **Development** | Any | Dev Token (Bearer) | Local file (`~/.scion/dev-token`) |
 
@@ -88,6 +89,7 @@ type TokenClaims struct {
 
 - [Web Authentication](web-auth.md) - OAuth flows for web dashboard
 - [CLI Authentication](cli-auth.md) - Terminal-based authentication
+- [Agent Authentication](sciontool-auth.md) - Agent-to-Hub secure communication
 - [Server Auth Setup](server-auth-setup.md) - API keys, dev auth, and security
 - [Runtime Host Auth](runtime-host-auth.md) - Host registration and mutual TLS
 - [Implementation Milestones](auth-milestones.md) - Phased implementation plan

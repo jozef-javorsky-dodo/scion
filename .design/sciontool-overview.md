@@ -148,6 +148,7 @@ The hook system has two distinct layers:
 #### F. Hub Daemon (Hosted Mode)
 - **Role:** Background daemon process for hub communication in hosted mode.
 - **Trigger:** When `SCION_AGENT_MODE=hosted` and `SCION_HUB_ENDPOINT` is set, `sciontool init` spawns itself as a daemon subprocess (`sciontool daemon`).
+- **Authentication:** Authenticates with the Hub using a short-lived, Hub-issued JWT provided via the `SCION_HUB_TOKEN` environment variable. See [Agent Authentication](hosted/auth/sciontool-auth.md) for details.
 - **Capabilities:**
   - **Heartbeat:** Periodic liveness reporting to the hub (configurable interval, default 30s)
   - **Status Sync:** Reports agent state (idle, busy, error) to the hub
