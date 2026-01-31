@@ -2,19 +2,21 @@
 
 This document tracks the phased implementation of Scion authentication.
 
+*Last updated: 2026-01-31*
+
 ---
 
 ## Phase 0: Development Authentication (Interim)
 
-- [ ] Add `auth.devMode`, `auth.devToken`, `auth.devTokenFile` to config schema
-- [ ] Implement `InitDevAuth()` function
-- [ ] Add `--dev-auth` flag to `scion server start`
-- [ ] Implement `DevAuthMiddleware`
-- [ ] Add startup logging for dev token
+- [x] Add `auth.devMode`, `auth.devToken`, `auth.devTokenFile` to config schema
+- [x] Implement `InitDevAuth()` function
+- [x] Add `--dev-auth` flag to `scion server start`
+- [x] Implement `DevAuthMiddleware`
+- [x] Add startup logging for dev token
 - [ ] Add validation to block non-localhost + no-TLS + devMode
-- [ ] Add `WithDevToken()` option to `hubclient`
-- [ ] Add `WithAutoDevAuth()` option to `hubclient`
-- [ ] Add `SCION_DEV_TOKEN` environment variable support in CLI
+- [x] Add `WithDevToken()` option to `hubclient`
+- [x] Add `WithAutoDevAuth()` option to `hubclient`
+- [x] Add `SCION_DEV_TOKEN` environment variable support in CLI
 
 ---
 
@@ -23,18 +25,33 @@ This document tracks the phased implementation of Scion authentication.
 - [x] OAuth provider integration (Google, GitHub)
 - [x] Session cookie management
 - [x] User creation/lookup on login
-- [ ] Hub auth endpoints (`/api/v1/auth/*`)
+- [x] Hub auth endpoints (`/api/v1/auth/*`)
 
 ---
 
 ## Phase 2: CLI Authentication
 
-- [ ] `scion hub auth login` command
-- [ ] Localhost callback server
+- [x] `scion hub auth login` command
+- [x] Localhost callback server (`pkg/hub/auth/localhost_server.go`)
 - [ ] PKCE implementation
-- [ ] Credential storage (`~/.scion/credentials.json`)
-- [ ] `scion hub auth status` command
-- [ ] `scion hub auth logout` command
+- [x] Credential storage (`pkg/credentials/store.go`)
+- [x] `scion hub auth status` command
+- [x] `scion hub auth logout` command
+
+---
+
+## Phase 2.5: Agent Authentication (sciontool)
+
+*Added: 2026-01-31*
+
+- [x] Hub-issued JWT tokens for agents (`pkg/hub/agenttoken.go`)
+- [x] Agent token validation middleware
+- [x] Token generation during agent provisioning
+- [x] `SCION_HUB_TOKEN` environment variable in containers
+- [x] sciontool hub client (`pkg/sciontool/hub/client.go`)
+- [x] Agent status reporting to Hub
+- [ ] Token refresh mechanism
+- [ ] Scope-based authorization enforcement on endpoints
 
 ---
 
@@ -63,3 +80,4 @@ This document tracks the phased implementation of Scion authentication.
 - [CLI Authentication](cli-auth.md) - Terminal-based authentication
 - [Server Auth Setup](server-auth-setup.md) - API keys and dev authentication
 - [Runtime Host Auth](runtime-host-auth.md) - Host registration (future)
+- [sciontool Auth](sciontool-auth.md) - Agent-to-Hub JWT authentication
