@@ -529,7 +529,6 @@ func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, host
 			ID:              hostID,
 			Name:            hostName,
 			Slug:            api.Slugify(hostName),
-			Type:            runtimeType,
 			Mode:            store.HostModeConnected,
 			Version:         "0.1.0",
 			Status:          store.HostStatusOnline,
@@ -539,9 +538,8 @@ func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, host
 				Sync:   true,
 				Attach: true,
 			},
-			SupportedHarnesses: []string{"claude", "gemini", "opencode", "generic"},
-			Runtimes: []store.HostRuntime{
-				{Type: runtimeType, Available: true},
+			Profiles: []store.HostProfile{
+				{Name: "default", Type: runtimeType, Available: true},
 			},
 		}
 
@@ -581,7 +579,6 @@ func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, host
 		LocalPath: globalPath, // ~/.scion for the global grove
 		Mode:      store.HostModeConnected,
 		Status:    store.HostStatusOnline,
-		Profiles:  []string{}, // All profiles
 		LastSeen:  time.Now(),
 	}
 

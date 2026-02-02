@@ -35,7 +35,6 @@ type runtimeHostService struct {
 
 // ListHostsOptions configures runtime host list filtering.
 type ListHostsOptions struct {
-	Type    string // Filter by type (docker, kubernetes, apple)
 	Status  string // Filter by status (online, offline)
 	Mode    string // Filter by mode (connected, read-only)
 	GroveID string // Filter by grove contribution
@@ -62,9 +61,8 @@ type ListHostGrovesResponse struct {
 
 // HostHeartbeat is the heartbeat payload.
 type HostHeartbeat struct {
-	Status    string           `json:"status"`
-	Resources *HostResources   `json:"resources,omitempty"`
-	Groves    []GroveHeartbeat `json:"groves,omitempty"`
+	Status string           `json:"status"`
+	Groves []GroveHeartbeat `json:"groves,omitempty"`
 }
 
 // GroveHeartbeat is per-grove status in a heartbeat.
@@ -85,9 +83,6 @@ type AgentHeartbeat struct {
 func (s *runtimeHostService) List(ctx context.Context, opts *ListHostsOptions) (*ListHostsResponse, error) {
 	query := url.Values{}
 	if opts != nil {
-		if opts.Type != "" {
-			query.Set("type", opts.Type)
-		}
 		if opts.Status != "" {
 			query.Set("status", opts.Status)
 		}

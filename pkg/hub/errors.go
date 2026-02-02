@@ -172,6 +172,5 @@ func RuntimeHostUnavailable(w http.ResponseWriter, hostID string, availableHosts
 type RuntimeHostSummary struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
-	Type   string `json:"type"`
 	Status string `json:"status"`
 }

@@ -179,12 +179,11 @@ type RuntimeHostStore interface {
 	ListRuntimeHosts(ctx context.Context, filter RuntimeHostFilter, opts ListOptions) (*ListResult[RuntimeHost], error)
 
 	// UpdateRuntimeHostHeartbeat updates the last heartbeat and status.
-	UpdateRuntimeHostHeartbeat(ctx context.Context, id string, status string, resources *HostResources) error
+	UpdateRuntimeHostHeartbeat(ctx context.Context, id string, status string) error
 }
 
 // RuntimeHostFilter defines criteria for filtering runtime hosts.
 type RuntimeHostFilter struct {
-	Type    string
 	Status  string
 	Mode    string
 	GroveID string

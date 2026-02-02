@@ -85,12 +85,11 @@ type RegisterGroveRequest struct {
 
 // HostInfo describes the registering host.
 type HostInfo struct {
-	ID                 string            `json:"id,omitempty"`
-	Name               string            `json:"name"`
-	Version            string            `json:"version"`
-	Capabilities       *HostCapabilities `json:"capabilities,omitempty"`
-	Runtimes           []HostRuntime     `json:"runtimes,omitempty"`
-	SupportedHarnesses []string          `json:"supportedHarnesses,omitempty"`
+	ID           string            `json:"id,omitempty"`
+	Name         string            `json:"name"`
+	Version      string            `json:"version"`
+	Capabilities *HostCapabilities `json:"capabilities,omitempty"`
+	Profiles     []HostProfile     `json:"profiles,omitempty"`
 }
 
 // RegisterGroveResponse is the response from registering a grove.

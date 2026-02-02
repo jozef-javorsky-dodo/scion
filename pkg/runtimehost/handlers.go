@@ -76,14 +76,6 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
-
-	// Count running agents
-	agentsRunning := 0
-	if agents, err := s.manager.List(ctx, map[string]string{"scion.agent": "true"}); err == nil {
-		agentsRunning = len(agents)
-	}
-
 	runtimeType := "unknown"
 	if s.runtime != nil {
 		runtimeType = s.runtime.Name()
@@ -94,16 +86,14 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		Name:    s.config.HostName,
 		Version: s.version,
 		Mode:    s.config.Mode,
-		Type:    runtimeType,
 		Capabilities: &HostCapabilities{
 			WebPTY: false, // TODO: Implement WebSocket PTY
 			Sync:   true,
 			Attach: true,
 			Exec:   true,
 		},
-		SupportedHarnesses: []string{"claude", "gemini", "opencode", "generic"},
-		Resources: &HostResources{
-			AgentsRunning: agentsRunning,
+		Profiles: []HostProfile{
+			{Name: "default", Type: runtimeType, Available: true},
 		},
 	}
 

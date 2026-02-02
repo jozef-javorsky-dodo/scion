@@ -86,7 +86,6 @@ type GroveContributor struct {
 	HostName  string    `json:"hostName"`
 	Mode      string    `json:"mode"`
 	Status    string    `json:"status"`
-	Profiles  []string  `json:"profiles,omitempty"`
 	LastSeen  time.Time `json:"lastSeen,omitempty"`
 	LocalPath string    `json:"localPath,omitempty"`
 }
@@ -110,25 +109,22 @@ type BucketConfig struct {
 
 // RuntimeHost represents a runtime host from the Hub API.
 type RuntimeHost struct {
-	ID                 string            `json:"id"`
-	Name               string            `json:"name"`
-	Slug               string            `json:"slug"`
-	Type               string            `json:"type"`
-	Mode               string            `json:"mode"`
-	Version            string            `json:"version"`
-	Status             string            `json:"status"`
-	ConnectionState    string            `json:"connectionState"`
-	LastHeartbeat      time.Time         `json:"lastHeartbeat,omitempty"`
-	Capabilities       *HostCapabilities `json:"capabilities,omitempty"`
-	SupportedHarnesses []string          `json:"supportedHarnesses,omitempty"`
-	Resources          *HostResources    `json:"resources,omitempty"`
-	Runtimes           []HostRuntime     `json:"runtimes,omitempty"`
-	Labels             map[string]string `json:"labels,omitempty"`
-	Annotations        map[string]string `json:"annotations,omitempty"`
-	Endpoint           string            `json:"endpoint,omitempty"`
-	Groves             []HostGroveInfo   `json:"groves,omitempty"`
-	Created            time.Time         `json:"created"`
-	Updated            time.Time         `json:"updated"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Slug            string            `json:"slug"`
+	Mode            string            `json:"mode"`
+	Version         string            `json:"version"`
+	Status          string            `json:"status"`
+	ConnectionState string            `json:"connectionState"`
+	LastHeartbeat   time.Time         `json:"lastHeartbeat,omitempty"`
+	Capabilities    *HostCapabilities `json:"capabilities,omitempty"`
+	Profiles        []HostProfile     `json:"profiles,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty"`
+	Annotations     map[string]string `json:"annotations,omitempty"`
+	Endpoint        string            `json:"endpoint,omitempty"`
+	Groves          []HostGroveInfo   `json:"groves,omitempty"`
+	Created         time.Time         `json:"created"`
+	Updated         time.Time         `json:"updated"`
 }
 
 // HostCapabilities describes runtime host capabilities.
@@ -138,16 +134,9 @@ type HostCapabilities struct {
 	Attach bool `json:"attach"`
 }
 
-// HostResources describes host resource availability.
-type HostResources struct {
-	CPUAvailable    string `json:"cpuAvailable,omitempty"`
-	MemoryAvailable string `json:"memoryAvailable,omitempty"`
-	AgentsRunning   int    `json:"agentsRunning,omitempty"`
-	AgentsCapacity  int    `json:"agentsCapacity,omitempty"`
-}
-
-// HostRuntime describes a container runtime on a host.
-type HostRuntime struct {
+// HostProfile describes a runtime profile available on a host.
+type HostProfile struct {
+	Name      string `json:"name"`
 	Type      string `json:"type"`
 	Available bool   `json:"available"`
 	Context   string `json:"context,omitempty"`
@@ -156,13 +145,12 @@ type HostRuntime struct {
 
 // HostGroveInfo describes a grove from a host's perspective.
 type HostGroveInfo struct {
-	GroveID    string   `json:"groveId"`
-	GroveName  string   `json:"groveName"`
-	GitRemote  string   `json:"gitRemote,omitempty"`
-	Mode       string   `json:"mode"`
-	Profiles   []string `json:"profiles,omitempty"`
-	AgentCount int      `json:"agentCount"`
-	LocalPath  string   `json:"localPath,omitempty"`
+	GroveID    string `json:"groveId"`
+	GroveName  string `json:"groveName"`
+	GitRemote  string `json:"gitRemote,omitempty"`
+	Mode       string `json:"mode"`
+	AgentCount int    `json:"agentCount"`
+	LocalPath  string `json:"localPath,omitempty"`
 }
 
 // Template represents a template from the Hub API.

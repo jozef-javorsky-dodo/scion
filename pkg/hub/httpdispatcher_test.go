@@ -106,7 +106,6 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate(t *testing.T) {
 		ID:       "host-1",
 		Name:     "test-host",
 		Slug:     "test-host",
-		Type:     "docker",
 		Endpoint: "http://localhost:9800",
 		Status:   store.HostStatusOnline,
 	}

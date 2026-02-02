@@ -341,7 +341,6 @@ func TestRuntimeHostLookupByName(t *testing.T) {
 		ID:     api.NewUUID(),
 		Name:   "My-Laptop",
 		Slug:   "my-laptop",
-		Type:   "docker",
 		Mode:   store.HostModeConnected,
 		Status: store.HostStatusOnline,
 	}
@@ -380,7 +379,6 @@ func TestRuntimeHostCRUD(t *testing.T) {
 		ID:      api.NewUUID(),
 		Name:    "Dev Laptop",
 		Slug:    "dev-laptop",
-		Type:    "docker",
 		Mode:    store.HostModeConnected,
 		Version: "1.0.0",
 		Status:  store.HostStatusOnline,
@@ -389,7 +387,9 @@ func TestRuntimeHostCRUD(t *testing.T) {
 			Sync:   true,
 			Attach: true,
 		},
-		SupportedHarnesses: []string{"claude", "gemini"},
+		Profiles: []store.HostProfile{
+			{Name: "default", Type: "docker", Available: true},
+		},
 	}
 
 	err := s.CreateRuntimeHost(ctx, host)
@@ -400,9 +400,9 @@ func TestRuntimeHostCRUD(t *testing.T) {
 	retrieved, err := s.GetRuntimeHost(ctx, host.ID)
 	require.NoError(t, err)
 	assert.Equal(t, host.Name, retrieved.Name)
-	assert.Equal(t, host.Type, retrieved.Type)
 	assert.True(t, retrieved.Capabilities.WebPTY)
-	assert.Contains(t, retrieved.SupportedHarnesses, "claude")
+	assert.Len(t, retrieved.Profiles, 1)
+	assert.Equal(t, "docker", retrieved.Profiles[0].Type)
 
 	// Update host
 	retrieved.Status = store.HostStatusOffline
@@ -415,9 +415,7 @@ func TestRuntimeHostCRUD(t *testing.T) {
 	assert.Equal(t, store.HostStatusOffline, retrieved.Status)
 
 	// Update heartbeat
-	err = s.UpdateRuntimeHostHeartbeat(ctx, host.ID, store.HostStatusOnline, &store.HostResources{
-		AgentsRunning: 3,
-	})
+	err = s.UpdateRuntimeHostHeartbeat(ctx, host.ID, store.HostStatusOnline)
 	require.NoError(t, err)
 
 	// Verify heartbeat
@@ -425,7 +423,6 @@ func TestRuntimeHostCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, store.HostStatusOnline, retrieved.Status)
 	assert.NotZero(t, retrieved.LastHeartbeat)
-	assert.Equal(t, 3, retrieved.Resources.AgentsRunning)
 
 	// Delete host
 	err = s.DeleteRuntimeHost(ctx, host.ID)
@@ -445,12 +442,14 @@ func TestRuntimeHostList(t *testing.T) {
 			ID:     api.NewUUID(),
 			Name:   "Host " + string(rune('A'+i)),
 			Slug:   "host-" + string(rune('a'+i)),
-			Type:   "docker",
 			Mode:   store.HostModeConnected,
 			Status: store.HostStatusOnline,
+			Profiles: []store.HostProfile{
+				{Name: "default", Type: "docker", Available: true},
+			},
 		}
 		if i == 0 {
-			host.Type = "kubernetes"
+			host.Status = store.HostStatusOffline
 		}
 		require.NoError(t, s.CreateRuntimeHost(ctx, host))
 	}
@@ -460,8 +459,8 @@ func TestRuntimeHostList(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 3, result.TotalCount)
 
-	// List by type
-	result, err = s.ListRuntimeHosts(ctx, store.RuntimeHostFilter{Type: "kubernetes"}, store.ListOptions{})
+	// List by status
+	result, err = s.ListRuntimeHosts(ctx, store.RuntimeHostFilter{Status: store.HostStatusOffline}, store.ListOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.TotalCount)
 }
@@ -672,9 +671,12 @@ func TestGroveContributors(t *testing.T) {
 		ID:     api.NewUUID(),
 		Name:   "Host 1",
 		Slug:   "host-1",
-		Type:   "docker",
 		Mode:   store.HostModeConnected,
 		Status: store.HostStatusOnline,
+		Profiles: []store.HostProfile{
+			{Name: "docker", Type: "docker", Available: true},
+			{Name: "dev", Type: "docker", Available: true},
+		},
 	}
 	require.NoError(t, s.CreateRuntimeHost(ctx, host1))
 
@@ -682,9 +684,11 @@ func TestGroveContributors(t *testing.T) {
 		ID:     api.NewUUID(),
 		Name:   "Host 2",
 		Slug:   "host-2",
-		Type:   "kubernetes",
 		Mode:   store.HostModeConnected,
 		Status: store.HostStatusOnline,
+		Profiles: []store.HostProfile{
+			{Name: "k8s-prod", Type: "kubernetes", Available: true},
+		},
 	}
 	require.NoError(t, s.CreateRuntimeHost(ctx, host2))
 
@@ -695,7 +699,6 @@ func TestGroveContributors(t *testing.T) {
 		HostName: host1.Name,
 		Mode:     store.HostModeConnected,
 		Status:   store.HostStatusOnline,
-		Profiles: []string{"docker", "dev"},
 	}
 	require.NoError(t, s.AddGroveContributor(ctx, contrib1))
 
@@ -705,7 +708,6 @@ func TestGroveContributors(t *testing.T) {
 		HostName: host2.Name,
 		Mode:     store.HostModeReadOnly,
 		Status:   store.HostStatusOnline,
-		Profiles: []string{"k8s-prod"},
 	}
 	require.NoError(t, s.AddGroveContributor(ctx, contrib2))
 

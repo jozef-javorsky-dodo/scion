@@ -509,10 +509,9 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 				Sync:   true,
 				Attach: true,
 			},
-			Runtimes: []hubclient.HostRuntime{
-				{Type: runtimeType, Available: true},
+			Profiles: []hubclient.HostProfile{
+				{Name: "default", Type: runtimeType, Available: true},
 			},
-			SupportedHarnesses: supportedHarnesses,
 		},
 	}
 
@@ -682,10 +681,10 @@ func runHubHosts(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-36s  %-20s  %-10s  %-10s  %s\n", "ID", "NAME", "TYPE", "STATUS", "MODE")
-	fmt.Printf("%-36s  %-20s  %-10s  %-10s  %s\n", "------------------------------------", "--------------------", "----------", "----------", "----------")
+	fmt.Printf("%-36s  %-20s  %-10s  %s\n", "ID", "NAME", "STATUS", "MODE")
+	fmt.Printf("%-36s  %-20s  %-10s  %s\n", "------------------------------------", "--------------------", "----------", "----------")
 	for _, h := range resp.Hosts {
-		fmt.Printf("%-36s  %-20s  %-10s  %-10s  %s\n", h.ID, truncate(h.Name, 20), h.Type, h.Status, h.Mode)
+		fmt.Printf("%-36s  %-20s  %-10s  %s\n", h.ID, truncate(h.Name, 20), h.Status, h.Mode)
 	}
 
 	return nil

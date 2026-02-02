@@ -1006,10 +1006,10 @@ func (s *SQLiteStore) CreateRuntimeHost(ctx context.Context, host *store.Runtime
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		host.ID, host.Name, host.Slug, host.Type, host.Mode, host.Version,
+		host.ID, host.Name, host.Slug, "", host.Mode, host.Version,
 		host.Status, host.ConnectionState, host.LastHeartbeat,
-		marshalJSON(host.Capabilities), marshalJSON(host.SupportedHarnesses),
-		marshalJSON(host.Resources), marshalJSON(host.Runtimes),
+		marshalJSON(host.Capabilities), "[]",
+		"{}", marshalJSON(host.Profiles),
 		marshalJSON(host.Labels), marshalJSON(host.Annotations), host.Endpoint,
 		host.Created, host.Updated,
 	)
@@ -1024,7 +1024,8 @@ func (s *SQLiteStore) CreateRuntimeHost(ctx context.Context, host *store.Runtime
 
 func (s *SQLiteStore) GetRuntimeHost(ctx context.Context, id string) (*store.RuntimeHost, error) {
 	host := &store.RuntimeHost{}
-	var capabilities, harnesses, resources, runtimes, labels, annotations string
+	var capabilities, profiles, labels, annotations string
+	var hostType, harnesses, resources string // unused columns kept for schema compatibility
 	var lastHeartbeat sql.NullTime
 
 	err := s.db.QueryRowContext(ctx, `
@@ -1035,9 +1036,9 @@ func (s *SQLiteStore) GetRuntimeHost(ctx context.Context, id string) (*store.Run
 			created_at, updated_at
 		FROM runtime_hosts WHERE id = ?
 	`, id).Scan(
-		&host.ID, &host.Name, &host.Slug, &host.Type, &host.Mode, &host.Version,
+		&host.ID, &host.Name, &host.Slug, &hostType, &host.Mode, &host.Version,
 		&host.Status, &host.ConnectionState, &lastHeartbeat,
-		&capabilities, &harnesses, &resources, &runtimes,
+		&capabilities, &harnesses, &resources, &profiles,
 		&labels, &annotations, &host.Endpoint,
 		&host.Created, &host.Updated,
 	)
@@ -1052,9 +1053,7 @@ func (s *SQLiteStore) GetRuntimeHost(ctx context.Context, id string) (*store.Run
 		host.LastHeartbeat = lastHeartbeat.Time
 	}
 	unmarshalJSON(capabilities, &host.Capabilities)
-	unmarshalJSON(harnesses, &host.SupportedHarnesses)
-	unmarshalJSON(resources, &host.Resources)
-	unmarshalJSON(runtimes, &host.Runtimes)
+	unmarshalJSON(profiles, &host.Profiles)
 	unmarshalJSON(labels, &host.Labels)
 	unmarshalJSON(annotations, &host.Annotations)
 
@@ -1085,10 +1084,10 @@ func (s *SQLiteStore) UpdateRuntimeHost(ctx context.Context, host *store.Runtime
 			updated_at = ?
 		WHERE id = ?
 	`,
-		host.Name, host.Slug, host.Type, host.Mode, host.Version,
+		host.Name, host.Slug, "", host.Mode, host.Version,
 		host.Status, host.ConnectionState, host.LastHeartbeat,
-		marshalJSON(host.Capabilities), marshalJSON(host.SupportedHarnesses),
-		marshalJSON(host.Resources), marshalJSON(host.Runtimes),
+		marshalJSON(host.Capabilities), "[]",
+		"{}", marshalJSON(host.Profiles),
 		marshalJSON(host.Labels), marshalJSON(host.Annotations), host.Endpoint,
 		host.Updated,
 		host.ID,
@@ -1126,10 +1125,6 @@ func (s *SQLiteStore) ListRuntimeHosts(ctx context.Context, filter store.Runtime
 	var conditions []string
 	var args []interface{}
 
-	if filter.Type != "" {
-		conditions = append(conditions, "type = ?")
-		args = append(args, filter.Type)
-	}
 	if filter.Status != "" {
 		conditions = append(conditions, "status = ?")
 		args = append(args, filter.Status)
@@ -1178,13 +1173,14 @@ func (s *SQLiteStore) ListRuntimeHosts(ctx context.Context, filter store.Runtime
 	var hosts []store.RuntimeHost
 	for rows.Next() {
 		var host store.RuntimeHost
-		var capabilities, harnesses, resources, runtimes, labels, annotations string
+		var capabilities, profiles, labels, annotations string
+		var hostType, harnesses, resources string // unused columns kept for schema compatibility
 		var lastHeartbeat sql.NullTime
 
 		if err := rows.Scan(
-			&host.ID, &host.Name, &host.Slug, &host.Type, &host.Mode, &host.Version,
+			&host.ID, &host.Name, &host.Slug, &hostType, &host.Mode, &host.Version,
 			&host.Status, &host.ConnectionState, &lastHeartbeat,
-			&capabilities, &harnesses, &resources, &runtimes,
+			&capabilities, &harnesses, &resources, &profiles,
 			&labels, &annotations, &host.Endpoint,
 			&host.Created, &host.Updated,
 		); err != nil {
@@ -1195,9 +1191,7 @@ func (s *SQLiteStore) ListRuntimeHosts(ctx context.Context, filter store.Runtime
 			host.LastHeartbeat = lastHeartbeat.Time
 		}
 		unmarshalJSON(capabilities, &host.Capabilities)
-		unmarshalJSON(harnesses, &host.SupportedHarnesses)
-		unmarshalJSON(resources, &host.Resources)
-		unmarshalJSON(runtimes, &host.Runtimes)
+		unmarshalJSON(profiles, &host.Profiles)
 		unmarshalJSON(labels, &host.Labels)
 		unmarshalJSON(annotations, &host.Annotations)
 
@@ -1210,17 +1204,16 @@ func (s *SQLiteStore) ListRuntimeHosts(ctx context.Context, filter store.Runtime
 	}, nil
 }
 
-func (s *SQLiteStore) UpdateRuntimeHostHeartbeat(ctx context.Context, id string, status string, resources *store.HostResources) error {
+func (s *SQLiteStore) UpdateRuntimeHostHeartbeat(ctx context.Context, id string, status string) error {
 	now := time.Now()
 
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE runtime_hosts SET
 			status = ?,
 			last_heartbeat = ?,
-			resources = COALESCE(?, resources),
 			updated_at = ?
 		WHERE id = ?
-	`, status, now, marshalJSON(resources), now, id)
+	`, status, now, now, id)
 	if err != nil {
 		return err
 	}
@@ -1750,7 +1743,7 @@ func (s *SQLiteStore) AddGroveContributor(ctx context.Context, contrib *store.Gr
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		contrib.GroveID, contrib.HostID, contrib.HostName, contrib.LocalPath, contrib.Mode, contrib.Status,
-		marshalJSON(contrib.Profiles), contrib.LastSeen,
+		"[]", contrib.LastSeen, // profiles column kept for schema compat but no longer used
 	)
 	return err
 }
@@ -1773,7 +1766,7 @@ func (s *SQLiteStore) RemoveGroveContributor(ctx context.Context, groveID, hostI
 func (s *SQLiteStore) GetGroveContributor(ctx context.Context, groveID, hostID string) (*store.GroveContributor, error) {
 	var contrib store.GroveContributor
 	var localPath sql.NullString
-	var profiles string
+	var profiles string // unused column kept for schema compat
 	var lastSeen sql.NullTime
 
 	err := s.db.QueryRowContext(ctx, `
@@ -1796,7 +1789,7 @@ func (s *SQLiteStore) GetGroveContributor(ctx context.Context, groveID, hostID s
 	if lastSeen.Valid {
 		contrib.LastSeen = lastSeen.Time
 	}
-	unmarshalJSON(profiles, &contrib.Profiles)
+	// profiles column no longer used - lookup from RuntimeHost.Profiles instead
 
 	return &contrib, nil
 }
@@ -1815,7 +1808,7 @@ func (s *SQLiteStore) GetGroveContributors(ctx context.Context, groveID string) 
 	for rows.Next() {
 		var contrib store.GroveContributor
 		var localPath sql.NullString
-		var profiles string
+		var profiles string // unused column kept for schema compat
 		var lastSeen sql.NullTime
 
 		if err := rows.Scan(
@@ -1831,7 +1824,7 @@ func (s *SQLiteStore) GetGroveContributors(ctx context.Context, groveID string) 
 		if lastSeen.Valid {
 			contrib.LastSeen = lastSeen.Time
 		}
-		unmarshalJSON(profiles, &contrib.Profiles)
+		// profiles column no longer used - lookup from RuntimeHost.Profiles instead
 
 		contributors = append(contributors, contrib)
 	}
@@ -1853,7 +1846,7 @@ func (s *SQLiteStore) GetHostGroves(ctx context.Context, hostID string) ([]store
 	for rows.Next() {
 		var contrib store.GroveContributor
 		var localPath sql.NullString
-		var profiles string
+		var profiles string // unused column kept for schema compat
 		var lastSeen sql.NullTime
 
 		if err := rows.Scan(
@@ -1869,7 +1862,7 @@ func (s *SQLiteStore) GetHostGroves(ctx context.Context, hostID string) ([]store
 		if lastSeen.Valid {
 			contrib.LastSeen = lastSeen.Time
 		}
-		unmarshalJSON(profiles, &contrib.Profiles)
+		// profiles column no longer used - lookup from RuntimeHost.Profiles instead
 
 		contributors = append(contributors, contrib)
 	}

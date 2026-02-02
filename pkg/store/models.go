@@ -118,7 +118,6 @@ type RuntimeHost struct {
 	Slug string `json:"slug"` // URL-safe identifier
 
 	// Configuration
-	Type    string `json:"type"`    // docker, kubernetes, apple
 	Mode    string `json:"mode"`    // connected, read-only
 	Version string `json:"version"` // Scion host agent version
 
@@ -128,14 +127,10 @@ type RuntimeHost struct {
 	LastHeartbeat   time.Time `json:"lastHeartbeat,omitempty"`
 
 	// Capabilities (stored as JSON)
-	Capabilities       *HostCapabilities `json:"capabilities,omitempty"`
-	SupportedHarnesses []string          `json:"supportedHarnesses,omitempty"`
+	Capabilities *HostCapabilities `json:"capabilities,omitempty"`
 
-	// Resources (stored as JSON)
-	Resources *HostResources `json:"resources,omitempty"`
-
-	// Runtimes available (stored as JSON)
-	Runtimes []HostRuntime `json:"runtimes,omitempty"`
+	// Profiles available (stored as JSON)
+	Profiles []HostProfile `json:"profiles,omitempty"`
 
 	// Metadata
 	Labels      map[string]string `json:"labels,omitempty"`
@@ -156,16 +151,9 @@ type HostCapabilities struct {
 	Attach bool `json:"attach"`
 }
 
-// HostResources describes resource availability on a host.
-type HostResources struct {
-	CPUAvailable    string `json:"cpuAvailable,omitempty"`
-	MemoryAvailable string `json:"memoryAvailable,omitempty"`
-	AgentsRunning   int    `json:"agentsRunning,omitempty"`
-	AgentsCapacity  int    `json:"agentsCapacity,omitempty"`
-}
-
-// HostRuntime describes a container runtime available on a host.
-type HostRuntime struct {
+// HostProfile describes a runtime profile available on a host.
+type HostProfile struct {
+	Name      string `json:"name"`      // Profile name (e.g., "docker-default", "k8s-prod")
 	Type      string `json:"type"`      // docker, kubernetes, apple
 	Available bool   `json:"available"`
 	Context   string `json:"context,omitempty"`   // K8s context
@@ -180,7 +168,6 @@ type GroveContributor struct {
 	LocalPath string    `json:"localPath,omitempty"` // Filesystem path to the grove on this host (e.g., ~/.scion or /path/to/project/.scion)
 	Mode      string    `json:"mode"`                // connected, read-only
 	Status    string    `json:"status"`              // online, offline
-	Profiles  []string  `json:"profiles"`            // Profiles this host can execute
 	LastSeen  time.Time `json:"lastSeen,omitempty"`
 }
 

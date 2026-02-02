@@ -550,12 +550,11 @@ type RegisterGroveRequest struct {
 }
 
 type RegisterHostInfo struct {
-	ID                 string               `json:"id,omitempty"`
-	Name               string               `json:"name"`
-	Version            string               `json:"version,omitempty"`
-	Capabilities       *store.HostCapabilities `json:"capabilities,omitempty"`
-	Runtimes           []store.HostRuntime  `json:"runtimes,omitempty"`
-	SupportedHarnesses []string             `json:"supportedHarnesses,omitempty"`
+	ID           string                  `json:"id,omitempty"`
+	Name         string                  `json:"name"`
+	Version      string                  `json:"version,omitempty"`
+	Capabilities *store.HostCapabilities `json:"capabilities,omitempty"`
+	Profiles     []store.HostProfile     `json:"profiles,omitempty"`
 }
 
 type RegisterGroveResponse struct {
@@ -767,14 +766,10 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 			host.Status = store.HostStatusOnline
 			host.ConnectionState = "connected"
 			host.Capabilities = req.Host.Capabilities
-			host.SupportedHarnesses = req.Host.SupportedHarnesses
-			host.Runtimes = req.Host.Runtimes
+			host.Profiles = req.Host.Profiles
 
 			if req.Mode != "" {
 				host.Mode = req.Mode
-			}
-			if len(req.Host.Runtimes) > 0 {
-				host.Type = req.Host.Runtimes[0].Type
 			}
 
 			if err := s.store.UpdateRuntimeHost(ctx, host); err != nil {
@@ -788,26 +783,19 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 			}
 
 			host = &store.RuntimeHost{
-				ID:                 hostID,
-				Name:               req.Host.Name,
-				Slug:               api.Slugify(req.Host.Name),
-				Type:               "docker", // Default
-				Mode:               req.Mode,
-				Version:            req.Host.Version,
-				Status:             store.HostStatusOnline,
-				ConnectionState:    "connected",
-				Capabilities:       req.Host.Capabilities,
-				SupportedHarnesses: req.Host.SupportedHarnesses,
-				Runtimes:           req.Host.Runtimes,
+				ID:              hostID,
+				Name:            req.Host.Name,
+				Slug:            api.Slugify(req.Host.Name),
+				Mode:            req.Mode,
+				Version:         req.Host.Version,
+				Status:          store.HostStatusOnline,
+				ConnectionState: "connected",
+				Capabilities:    req.Host.Capabilities,
+				Profiles:        req.Host.Profiles,
 			}
 
 			if host.Mode == "" {
 				host.Mode = store.HostModeConnected
-			}
-
-			// Determine runtime type from runtimes list
-			if len(req.Host.Runtimes) > 0 {
-				host.Type = req.Host.Runtimes[0].Type
 			}
 
 			if err := s.store.CreateRuntimeHost(ctx, host); err != nil {
@@ -824,7 +812,6 @@ func (s *Server) handleGroveRegister(w http.ResponseWriter, r *http.Request) {
 			LocalPath: req.Path, // Filesystem path to the grove on this host
 			Mode:      host.Mode,
 			Status:    store.HostStatusOnline,
-			Profiles:  req.Profiles,
 		}
 
 		if err := s.store.AddGroveContributor(ctx, contrib); err != nil {
@@ -1436,7 +1423,6 @@ func (s *Server) listRuntimeHosts(w http.ResponseWriter, r *http.Request) {
 
 	groveID := query.Get("groveId")
 	filter := store.RuntimeHostFilter{
-		Type:    query.Get("type"),
 		Status:  query.Get("status"),
 		Mode:    query.Get("mode"),
 		GroveID: groveID,
@@ -1658,8 +1644,7 @@ func (s *Server) deleteRuntimeHost(w http.ResponseWriter, r *http.Request, id st
 
 func (s *Server) handleHostHeartbeat(w http.ResponseWriter, r *http.Request, id string) {
 	var heartbeat struct {
-		Status    string              `json:"status"`
-		Resources *store.HostResources `json:"resources,omitempty"`
+		Status string `json:"status"`
 	}
 
 	if err := readJSON(r, &heartbeat); err != nil {
@@ -1667,7 +1652,7 @@ func (s *Server) handleHostHeartbeat(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	if err := s.store.UpdateRuntimeHostHeartbeat(r.Context(), id, heartbeat.Status, heartbeat.Resources); err != nil {
+	if err := s.store.UpdateRuntimeHostHeartbeat(r.Context(), id, heartbeat.Status); err != nil {
 		writeErrorFromErr(w, err, "")
 		return
 	}
@@ -2809,7 +2794,6 @@ func (s *Server) resolveRuntimeHost(ctx context.Context, w http.ResponseWriter, 
 		hostSummaries[i] = RuntimeHostSummary{
 			ID:     h.ID,
 			Name:   h.Name,
-			Type:   h.Type,
 			Status: h.Status,
 		}
 	}

@@ -22,15 +22,22 @@ type HealthResponse struct {
 
 // HostInfoResponse is the response for the /api/v1/info endpoint.
 type HostInfoResponse struct {
-	HostID             string            `json:"hostId"`
-	Name               string            `json:"name,omitempty"`
-	Version            string            `json:"version"`
-	Mode               string            `json:"mode"`
-	Type               string            `json:"type"`
-	Capabilities       *HostCapabilities `json:"capabilities,omitempty"`
-	SupportedHarnesses []string          `json:"supportedHarnesses,omitempty"`
-	Resources          *HostResources    `json:"resources,omitempty"`
-	Groves             []GroveInfo       `json:"groves,omitempty"`
+	HostID       string            `json:"hostId"`
+	Name         string            `json:"name,omitempty"`
+	Version      string            `json:"version"`
+	Mode         string            `json:"mode"`
+	Capabilities *HostCapabilities `json:"capabilities,omitempty"`
+	Profiles     []HostProfile     `json:"profiles,omitempty"`
+	Groves       []GroveInfo       `json:"groves,omitempty"`
+}
+
+// HostProfile describes a runtime profile available on a host.
+type HostProfile struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Available bool   `json:"available"`
+	Context   string `json:"context,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // HostCapabilities describes what this runtime host can do.
@@ -41,21 +48,12 @@ type HostCapabilities struct {
 	Exec   bool `json:"exec"`
 }
 
-// HostResources describes available resources on this host.
-type HostResources struct {
-	CPUAvailable    string `json:"cpuAvailable,omitempty"`
-	MemoryAvailable string `json:"memoryAvailable,omitempty"`
-	AgentsRunning   int    `json:"agentsRunning"`
-	AgentsCapacity  int    `json:"agentsCapacity,omitempty"`
-}
-
 // GroveInfo is a summary of a grove registered on this host.
 type GroveInfo struct {
-	GroveID    string   `json:"groveId"`
-	GroveName  string   `json:"groveName"`
-	GitRemote  string   `json:"gitRemote,omitempty"`
-	Profiles   []string `json:"profiles,omitempty"`
-	AgentCount int      `json:"agentCount"`
+	GroveID    string `json:"groveId"`
+	GroveName  string `json:"groveName"`
+	GitRemote  string `json:"gitRemote,omitempty"`
+	AgentCount int    `json:"agentCount"`
 }
 
 // ============================================================================
