@@ -63,29 +63,26 @@ These scenarios should work with Hub server and Runtime Host running on differen
 | - Audit logging | ✅ | `pkg/hub/audit.go` |
 | - Host auth metrics | ✅ | `pkg/hub/metrics.go`, `/metrics` endpoint |
 
-### 2.2 What's NOT Implemented (Blocking Scenarios)
+### 2.2 Recently Implemented
+
+| Component | Status | Key Files |
+|-----------|--------|-----------|
+| **PTY/Attach via Hub** | ✅ Complete | `cmd/attach.go`, `pkg/wsclient/pty.go` |
+| - WebSocket PTY relay | ✅ | `pkg/hub/pty_handlers.go` |
+| - PTY stream multiplexing | ✅ | `pkg/hub/controlchannel.go` |
+| **WebSocket Control Channel** | ✅ Complete | `pkg/hub/controlchannel.go` |
+| - Hub-initiated commands | ✅ | HTTP tunneling via WebSocket |
+| - NAT/firewall traversal | ✅ | Host-initiated connection |
+
+### 2.3 What's NOT Implemented (Blocking Scenarios)
 
 | Component | Status | Impact | Key Files |
 |-----------|--------|--------|-----------|
-| **PTY/Attach via Hub** | ❌ Not Implemented | Blocks Scenario 3 | `cmd/attach.go:33` |
-| - WebSocket PTY relay | ❌ | | `runtimehost-websocket.md` |
-| - PTY stream multiplexing | ❌ | | |
 | **Workspace Sync (Hosted)** | ❌ Not Implemented | Blocks Scenario 4 | `cmd/sync.go` |
 | - Sync workspace files to/from remote host | ❌ | | |
 | - rclone integration for workspace | ❌ | | |
-| **WebSocket Control Channel** | ⚠️ Not Implemented | Works around via HTTP | |
-| - Hub-initiated commands | ❌ | | |
-| - NAT/firewall traversal | ❌ | | |
 
-### 2.3 Current Behavior of Blocking Features
-
-**Attach (`scion attach`):**
-```go
-// cmd/attach.go:33
-if hubCtx != nil {
-    return fmt.Errorf("attach is not yet supported when using Hub integration\n\nTo attach locally, use: scion --no-hub attach %s", agentName)
-}
-```
+### 2.4 Current Behavior of Blocking Features
 
 **Workspace Sync:**
 - `cmd/sync.go` exists for local sync (tar-based or mutagen)
@@ -180,61 +177,46 @@ When Hub dispatches to Runtime Host, it needs the host endpoint URL. Currently:
 - Hub stores endpoint in database
 - Dispatcher looks up endpoint for dispatch
 
-**Open Question:** How does the Runtime Host determine its externally-reachable endpoint URL when behind NAT?
-
-Options:
-1. User explicitly provides endpoint during registration
-2. Runtime Host has public IP/hostname configured
-3. Fall back to WebSocket control channel (not implemented)
+**Resolved:** Runtime Hosts behind NAT use the WebSocket control channel:
+- Host initiates WebSocket connection to Hub at `/api/v1/runtime-hosts/connect`
+- Hub tunnels HTTP requests through the control channel
+- No external endpoint URL needed for NAT-ed hosts
+- See `runtimehost-websocket.md` Section 9 for implementation details
 
 ---
 
-### Scenario 3: Attach and Interact via tmux ❌
+### Scenario 3: Attach and Interact via tmux ✅
 
-**Status:** Not implemented - **requires significant work**
+**Status:** Fully implemented
 
-**Current Behavior:**
+**Commands:**
 ```bash
 scion attach my-agent
-# Error: attach is not yet supported when using Hub integration
+# Connects via WebSocket through Hub to Runtime Host
 ```
 
-**What's Needed:**
-
-**Option A: WebSocket PTY Relay (Recommended)**
-
-Implement the design in `runtimehost-websocket.md`:
-
-1. **Hub Side:**
-   - WebSocket endpoint: `WS /api/v1/agents/{id}/pty`
-   - Stream mapper to route browser/CLI WebSocket to host stream
-   - Proxy WebSocket data between CLI and Runtime Host
-
-2. **Runtime Host Side:**
-   - WebSocket endpoint: `WS /api/v1/agents/{id}/attach` or via control channel
-   - PTY attachment to tmux session
-   - Bidirectional stream handling
-
-3. **CLI Side:**
-   - Establish WebSocket connection to Hub
-   - Forward stdin/stdout to WebSocket
-   - Handle terminal resize events
+**What Happens:**
+1. CLI calls Hub to get agent details and verify running status
+2. CLI establishes WebSocket connection to Hub at `/api/v1/agents/{id}/pty`
+3. Hub opens PTY stream to Runtime Host via control channel
+4. Runtime Host executes `docker exec -i {container} tmux attach-session -t scion`
+5. Bidirectional I/O is relayed: CLI ↔ Hub ↔ Runtime Host ↔ Container
 
 **Implementation Files:**
-- `pkg/hub/pty_handlers.go` (new)
-- `pkg/runtimehost/pty_handlers.go` (new)
-- `cmd/attach.go` (modify to use WebSocket when Hub enabled)
+- `pkg/hub/pty_handlers.go` - Hub PTY WebSocket endpoint
+- `pkg/hub/controlchannel.go` - Stream multiplexing to hosts
+- `pkg/runtimehost/pty_handlers.go` - Docker exec and PTY handling
+- `pkg/runtimehost/controlchannel.go` - Control channel client
+- `pkg/wsclient/pty.go` - CLI WebSocket client
+- `cmd/attach.go` - Updated to use WebSocket when Hub enabled
 
-**Estimated Effort:** 2-3 days
+**Features:**
+- Terminal raw mode for proper character handling
+- SIGWINCH resize event propagation
+- Bearer token authentication
+- Graceful disconnect handling
 
-**Option B: Direct SSH to Runtime Host (Simpler, Limited)**
-
-If Runtime Host is directly reachable:
-1. Hub returns Runtime Host SSH endpoint
-2. CLI SSHs directly to host
-3. Attach locally on host
-
-**Limitation:** Doesn't work for NAT-ed hosts
+**No Implementation Work Required.**
 
 ---
 
@@ -453,7 +435,7 @@ scion hub auth login
 scion hub register
 scion template sync my-template --from .scion/templates/claude --harness claude
 scion start my-agent --type my-template "Hello world"
-scion attach my-agent  # Will fail until implemented
+scion attach my-agent  # Now works via WebSocket
 scion sync from my-agent  # Will fail until implemented
 scion stop my-agent
 scion delete my-agent
@@ -475,10 +457,12 @@ The milestone is complete when:
 1. ✅ CLI can authenticate with Hub
 2. ✅ Local template can be pushed to Hub (GCS)
 3. ✅ Agent can be started on remote Runtime Host using pushed template
-4. ⬜ CLI can attach to remote agent and interact via tmux
+4. ✅ CLI can attach to remote agent and interact via tmux
 5. ⬜ Workspace can be synced from remote agent to local machine
 6. ✅ Agent can be stopped via CLI
 7. ✅ Agent can be removed via CLI
+
+**6 of 7 scenarios complete.** Only workspace sync remains.
 
 All scenarios work with Hub and Runtime Host running as separate processes.
 

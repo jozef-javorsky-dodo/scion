@@ -71,7 +71,7 @@ This document provides an analysis of the hosted architecture implementation, co
 | `DELETE /api/v1/agents/:id` | ✅ | Delete agent |
 | `POST /api/v1/agents/:id/start` | ✅ | Start agent |
 | `POST /api/v1/agents/:id/stop` | ✅ | Stop agent |
-| `POST /api/v1/agents/:id/attach` | ⚠️ | PTY attach (stub) |
+| `POST /api/v1/agents/:id/attach` | ✅ | PTY attach via WebSocket |
 
 ### 1.3 Store Models
 
@@ -138,11 +138,11 @@ All store interfaces defined in `pkg/store/store.go`:
 | Feature | Design Doc | Notes |
 |---------|------------|-------|
 | OAuth Authentication | `dev-auth.md` | Only dev auth implemented |
-| WebSocket Control Channel | `hosted-architecture.md` | For NAT traversal |
-| PTY Relay | `runtime-host-api.md` | Stub handler only |
+| WebSocket Control Channel | `runtimehost-websocket.md` | ✅ **Implemented** - See Section 9 |
+| PTY Relay | `runtimehost-websocket.md` | ✅ **Implemented** - CLI attach via Hub |
 | NATS Integration | `web-frontend-design.md` | For real-time updates |
 | SSE Snapshot+Delta | `web-frontend-design.md` | For UI state sync |
-| xterm.js Terminal | `frontend-milestones.md` | M8 milestone |
+| xterm.js Terminal | `frontend-milestones.md` | M8 milestone (PTY backend ready) |
 | Agent Creation Wizard | `frontend-milestones.md` | M6 milestone |
 | Production Auth Flow | `hosted-architecture.md` | Session management |
 
@@ -314,16 +314,17 @@ All store interfaces defined in `pkg/store/store.go`:
 - Add host connectivity check before dispatch
 - Handle dispatch failures with proper error responses
 
-#### M2.2: Control Channel (WebSocket)
-- Implement WebSocket upgrade on Hub `/ws/control`
-- Add host authentication on connect
-- Implement command protocol (create, start, stop, attach)
-- Handle reconnection with state sync
+#### M2.2: Control Channel (WebSocket) ✅ COMPLETE
+- ✅ Implement WebSocket upgrade on Hub `/api/v1/runtime-hosts/connect`
+- ✅ Add host authentication on connect (HMAC)
+- ✅ Implement HTTP tunneling protocol
+- ✅ Handle reconnection with exponential backoff
+- See `runtimehost-websocket.md` Section 9 for implementation details
 
-#### M2.3: NAT Traversal
-- Host initiates connection to Hub
-- Hub queues commands for connected hosts
-- Implement command acknowledgment
+#### M2.3: NAT Traversal ✅ COMPLETE
+- ✅ Host initiates connection to Hub
+- ✅ Hub tunnels HTTP requests through control channel
+- ✅ Stream multiplexing for PTY sessions
 
 ### Phase 3: Agent Lifecycle Completion
 
@@ -339,11 +340,12 @@ All store interfaces defined in `pkg/store/store.go`:
 - PTY allocation and management
 - Output streaming setup
 
-#### M3.3: PTY Relay Implementation
-- WebSocket endpoint for terminal attach
-- Bidirectional I/O relay
-- Window resize handling
-- Disconnection recovery
+#### M3.3: PTY Relay Implementation ✅ COMPLETE
+- ✅ WebSocket endpoint for terminal attach (`/api/v1/agents/{id}/pty`)
+- ✅ Bidirectional I/O relay via control channel streams
+- ⚠️ Window resize handling (events captured, tmux resize pending)
+- ✅ Disconnection handling (graceful close)
+- See `runtimehost-websocket.md` Section 9 for implementation details
 
 #### M3.4: Agent Monitoring
 - Real-time status updates (SSE or WebSocket)

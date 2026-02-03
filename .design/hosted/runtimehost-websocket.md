@@ -1,6 +1,6 @@
 # Runtime Host WebSocket Design
 
-> **Status**: Consolidation document - centralizes WebSocket design currently scattered across multiple files.
+> **Status**: ✅ **Implemented** (2026-02-03) - Core control channel and PTY streaming functionality is complete.
 
 This document consolidates the WebSocket-related design for communication between the Hub and Runtime Hosts. The WebSocket connection serves two primary purposes:
 
@@ -504,6 +504,109 @@ For horizontal scalability, a hybrid approach could decouple command delivery fr
 **3. WebRTC**
 *Question:* Can browser-to-host PTY bypass the Hub using WebRTC in some scenarios?
 *Decision:* **No**. The Runtime Host is designed to operate in environments that are unreachable from the public internet (behind NAT/firewalls). While WebRTC *can* traverse NAT, the complexity of STUN/TURN setup outweighs the benefits for text-based PTY streams. All traffic will proxy through the Hub.
+
+---
+
+## 9. Implementation Status
+
+> **Last Updated:** 2026-02-03
+
+### 9.1 Completed Components
+
+| Component | Files | Status |
+|-----------|-------|--------|
+| **Protocol Types** | `pkg/wsprotocol/protocol.go`, `connection.go` | ✅ Complete |
+| **Hub Control Channel** | `pkg/hub/controlchannel.go`, `controlchannel_client.go` | ✅ Complete |
+| **Hub PTY Endpoint** | `pkg/hub/pty_handlers.go` | ✅ Complete |
+| **Runtime Host Control Channel** | `pkg/runtimehost/controlchannel.go` | ✅ Complete |
+| **Runtime Host PTY Handler** | `pkg/runtimehost/pty_handlers.go` | ✅ Complete |
+| **CLI WebSocket Client** | `pkg/wsclient/pty.go` | ✅ Complete |
+| **CLI Attach Command** | `cmd/attach.go` | ✅ Complete |
+
+### 9.2 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                           CLI                                    │
+│                    (pkg/wsclient/pty.go)                        │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │ WebSocket: /api/v1/agents/{id}/pty
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                           Hub                                    │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ PTY Handler (pkg/hub/pty_handlers.go)                    │   │
+│  │ - Authenticates client                                   │   │
+│  │ - Opens stream to host                                   │   │
+│  │ - Relays data bidirectionally                           │   │
+│  └─────────────────────┬───────────────────────────────────┘   │
+│                        │                                        │
+│  ┌─────────────────────▼───────────────────────────────────┐   │
+│  │ Control Channel Manager (pkg/hub/controlchannel.go)      │   │
+│  │ - Manages host connections                               │   │
+│  │ - Tunnels HTTP requests                                  │   │
+│  │ - Multiplexes streams                                    │   │
+│  └─────────────────────┬───────────────────────────────────┘   │
+└─────────────────────────┼───────────────────────────────────────┘
+                          │ WebSocket: /api/v1/runtime-hosts/connect
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Runtime Host                                │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Control Channel Client (pkg/runtimehost/controlchannel.go)│   │
+│  │ - Connects to Hub                                        │   │
+│  │ - Handles tunneled requests                              │   │
+│  │ - Manages PTY streams                                    │   │
+│  └─────────────────────┬───────────────────────────────────┘   │
+│                        │                                        │
+│  ┌─────────────────────▼───────────────────────────────────┐   │
+│  │ PTY Handler (pkg/runtimehost/pty_handlers.go)            │   │
+│  │ - Attaches to tmux session via docker exec              │   │
+│  │ - Pipes I/O to stream                                   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 9.3 Key Features Implemented
+
+**Control Channel:**
+- WebSocket endpoint at `/api/v1/runtime-hosts/connect`
+- Host connection management with session IDs
+- HTTP request tunneling through WebSocket
+- Stream multiplexing for PTY sessions
+- Ping/pong keepalive
+- Automatic fallback to HTTP when control channel unavailable
+- Graceful shutdown
+- HMAC authentication for WebSocket upgrade
+- Reconnection with exponential backoff
+
+**PTY Streaming:**
+- WebSocket endpoint at `/api/v1/agents/{id}/pty`
+- User authentication (Bearer token or ticket)
+- Agent lookup and access control
+- Stream proxy to runtime host via control channel
+- Bidirectional data relay
+- Docker exec integration with tmux
+- Terminal raw mode handling in CLI
+- SIGWINCH resize event propagation
+
+### 9.4 Configuration
+
+**Runtime Host:**
+```yaml
+runtimeHost:
+  hubEndpoint: "http://localhost:9810"
+  controlChannelEnabled: true  # Enable WebSocket control channel
+```
+
+### 9.5 Remaining Enhancements
+
+| Item | Description | Priority |
+|------|-------------|----------|
+| PTY Ticket Validation | Single-use tickets for browser clients | Medium |
+| Resize Propagation | Apply terminal resize to tmux sessions | Low |
+| Integration Tests | End-to-end WebSocket tests | Medium |
+| Browser Terminal | xterm.js integration with PTY endpoint | High |
 
 ---
 
