@@ -124,9 +124,9 @@ func (s *HeartbeatService) run(ctx context.Context) {
 
 	// Send initial heartbeat immediately
 	if err := s.sendHeartbeat(ctx); err != nil {
-		s.logger.Printf("[Heartbeat] Initial heartbeat failed: %v", err)
+		s.logger.Printf("[Host:Heartbeat] Initial heartbeat failed: %v", err)
 	} else {
-		s.logger.Printf("[Heartbeat] Initial heartbeat sent to Hub")
+		s.logger.Printf("[Host:Heartbeat] Initial heartbeat sent to Hub")
 	}
 
 	ticker := time.NewTicker(s.interval)
@@ -136,13 +136,13 @@ func (s *HeartbeatService) run(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			if err := s.sendHeartbeat(ctx); err != nil {
-				s.logger.Printf("[Heartbeat] Failed to send heartbeat: %v", err)
+				s.logger.Printf("[Host:Heartbeat] Failed to send heartbeat: %v", err)
 			}
 		case <-s.stopCh:
-			s.logger.Printf("[Heartbeat] Service stopping")
+			s.logger.Printf("[Host:Heartbeat] Service stopping")
 			return
 		case <-ctx.Done():
-			s.logger.Printf("[Heartbeat] Context cancelled")
+			s.logger.Printf("[Host:Heartbeat] Context cancelled")
 			return
 		}
 	}
@@ -182,7 +182,7 @@ func (s *HeartbeatService) gatherGroveAgents() []hubclient.GroveHeartbeat {
 	// List all agents managed by this host
 	agents, err := s.manager.List(context.Background(), nil)
 	if err != nil {
-		s.logger.Printf("[Heartbeat] Failed to list agents: %v", err)
+		s.logger.Printf("[Host:Heartbeat] Failed to list agents: %v", err)
 		return nil
 	}
 

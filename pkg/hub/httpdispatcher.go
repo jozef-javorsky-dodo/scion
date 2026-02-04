@@ -54,7 +54,7 @@ func (c *HTTPRuntimeHostClient) CreateAgent(ctx context.Context, hostID, hostEnd
 	}
 
 	if c.debug {
-		log.Printf("[HTTPDispatcher] POST %s", endpoint)
+		log.Printf("[Hub:Dispatcher] POST %s", endpoint)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -89,7 +89,7 @@ func (c *HTTPRuntimeHostClient) StartAgent(ctx context.Context, hostID, hostEndp
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/start", hostEndpoint, url.PathEscape(agentID))
 
 	if c.debug {
-		log.Printf("[HTTPDispatcher] POST %s", endpoint)
+		log.Printf("[Hub:Dispatcher] POST %s", endpoint)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
@@ -118,7 +118,7 @@ func (c *HTTPRuntimeHostClient) StopAgent(ctx context.Context, hostID, hostEndpo
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/stop", hostEndpoint, url.PathEscape(agentID))
 
 	if c.debug {
-		log.Printf("[HTTPDispatcher] POST %s", endpoint)
+		log.Printf("[Hub:Dispatcher] POST %s", endpoint)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
@@ -147,7 +147,7 @@ func (c *HTTPRuntimeHostClient) RestartAgent(ctx context.Context, hostID, hostEn
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/restart", hostEndpoint, url.PathEscape(agentID))
 
 	if c.debug {
-		log.Printf("[HTTPDispatcher] POST %s", endpoint)
+		log.Printf("[Hub:Dispatcher] POST %s", endpoint)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
@@ -177,7 +177,7 @@ func (c *HTTPRuntimeHostClient) DeleteAgent(ctx context.Context, hostID, hostEnd
 		hostEndpoint, url.PathEscape(agentID), deleteFiles, removeBranch)
 
 	if c.debug {
-		log.Printf("[HTTPDispatcher] DELETE %s", endpoint)
+		log.Printf("[Hub:Dispatcher] DELETE %s", endpoint)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
@@ -214,7 +214,7 @@ func (c *HTTPRuntimeHostClient) MessageAgent(ctx context.Context, hostID, hostEn
 	}
 
 	if c.debug {
-		log.Printf("[HTTPDispatcher] POST %s", endpoint)
+		log.Printf("[Hub:Dispatcher] POST %s", endpoint)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -318,7 +318,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentCreate(ctx context.Context, agent *st
 	}
 
 	if d.debug {
-		log.Printf("[HTTPDispatcher] DispatchAgentCreate: agent=%s, hubEndpoint=%q, tokenGenerator=%v",
+		log.Printf("[Hub:Dispatcher] DispatchAgentCreate: agent=%s, hubEndpoint=%q, tokenGenerator=%v",
 			agent.Name, d.hubEndpoint, d.tokenGenerator != nil)
 	}
 
@@ -327,17 +327,17 @@ func (d *HTTPAgentDispatcher) DispatchAgentCreate(ctx context.Context, agent *st
 		token, err := d.tokenGenerator.GenerateAgentToken(agent.ID, agent.GroveID)
 		if err != nil {
 			if d.debug {
-				log.Printf("[HTTPDispatcher] Warning: failed to generate agent token: %v", err)
+				log.Printf("[Hub:Dispatcher] Warning: failed to generate agent token: %v", err)
 			}
 			// Continue without token - agent will operate in unauthenticated mode
 		} else {
 			req.AgentToken = token
 			if d.debug {
-				log.Printf("[HTTPDispatcher] Generated agent token (length=%d)", len(token))
+				log.Printf("[Hub:Dispatcher] Generated agent token (length=%d)", len(token))
 			}
 		}
 	} else if d.debug {
-		log.Printf("[HTTPDispatcher] No token generator configured - agent will not have Hub credentials")
+		log.Printf("[Hub:Dispatcher] No token generator configured - agent will not have Hub credentials")
 	}
 
 	// Add configuration if available

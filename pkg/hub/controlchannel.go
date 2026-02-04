@@ -197,7 +197,7 @@ func (m *ControlChannelManager) HandleUpgrade(w http.ResponseWriter, r *http.Req
 	m.connections[hostID] = hostConn
 	m.mu.Unlock()
 
-	log.Printf("[ControlChannel] Host %s connected (session: %s)", hostID, sessionID)
+	log.Printf("[Hub:ControlChannel] Host %s connected (session: %s)", hostID, sessionID)
 
 	// Start message handler
 	go m.handleConnection(hostConn)
@@ -205,7 +205,7 @@ func (m *ControlChannelManager) HandleUpgrade(w http.ResponseWriter, r *http.Req
 	// Send connected message
 	connectedMsg := wsprotocol.NewConnectedMessage(hostID, sessionID, int(m.config.PingInterval.Milliseconds()))
 	if err := wsConn.WriteJSON(connectedMsg); err != nil {
-		log.Printf("[ControlChannel] Failed to send connected message: %v", err)
+		log.Printf("[Hub:ControlChannel] Failed to send connected message: %v", err)
 		hostConn.Close()
 		m.removeConnection(hostID)
 		return err
@@ -219,7 +219,7 @@ func (m *ControlChannelManager) handleConnection(hc *HostConnection) {
 	defer func() {
 		hc.Close()
 		m.removeConnection(hc.hostID)
-		log.Printf("[ControlChannel] Host %s disconnected", hc.hostID)
+		log.Printf("[Hub:ControlChannel] Host %s disconnected", hc.hostID)
 	}()
 
 	// Set up pong handler
@@ -236,7 +236,7 @@ func (m *ControlChannelManager) handleConnection(hc *HostConnection) {
 
 	// Set initial read deadline
 	if err := hc.conn.SetReadDeadline(time.Now().Add(m.config.PongWait)); err != nil {
-		log.Printf("[ControlChannel] Failed to set read deadline: %v", err)
+		log.Printf("[Hub:ControlChannel] Failed to set read deadline: %v", err)
 		return
 	}
 
@@ -250,13 +250,13 @@ func (m *ControlChannelManager) handleConnection(hc *HostConnection) {
 		_, data, err := hc.conn.ReadMessage()
 		if err != nil {
 			if wsprotocol.IsUnexpectedCloseError(err, wsprotocol.CloseGoingAway, wsprotocol.CloseNormalClosure) {
-				log.Printf("[ControlChannel] Read error from host %s: %v", hc.hostID, err)
+				log.Printf("[Hub:ControlChannel] Read error from host %s: %v", hc.hostID, err)
 			}
 			return
 		}
 
 		if err := m.handleMessage(hc, data); err != nil {
-			log.Printf("[ControlChannel] Message handling error from host %s: %v", hc.hostID, err)
+			log.Printf("[Hub:ControlChannel] Message handling error from host %s: %v", hc.hostID, err)
 		}
 	}
 }
@@ -282,7 +282,7 @@ func (m *ControlChannelManager) handleMessage(hc *HostConnection, data []byte) e
 		return nil
 	default:
 		if m.config.Debug {
-			log.Printf("[ControlChannel] Unknown message type from host %s: %s", hc.hostID, env.Type)
+			log.Printf("[Hub:ControlChannel] Unknown message type from host %s: %s", hc.hostID, env.Type)
 		}
 		return nil
 	}
@@ -301,7 +301,7 @@ func (m *ControlChannelManager) handleResponse(hc *HostConnection, data []byte) 
 
 	if !ok {
 		if m.config.Debug {
-			log.Printf("[ControlChannel] Response for unknown request: %s", resp.RequestID)
+			log.Printf("[Hub:ControlChannel] Response for unknown request: %s", resp.RequestID)
 		}
 		return nil
 	}
@@ -309,7 +309,7 @@ func (m *ControlChannelManager) handleResponse(hc *HostConnection, data []byte) 
 	select {
 	case ch <- &resp:
 	default:
-		log.Printf("[ControlChannel] Response channel full for request: %s", resp.RequestID)
+		log.Printf("[Hub:ControlChannel] Response channel full for request: %s", resp.RequestID)
 	}
 
 	return nil
@@ -328,7 +328,7 @@ func (m *ControlChannelManager) handleStreamData(hc *HostConnection, data []byte
 
 	if !ok {
 		if m.config.Debug {
-			log.Printf("[ControlChannel] Data for unknown stream: %s", frame.StreamID)
+			log.Printf("[Hub:ControlChannel] Data for unknown stream: %s", frame.StreamID)
 		}
 		return nil
 	}
@@ -355,7 +355,7 @@ func (m *ControlChannelManager) handleStreamClose(hc *HostConnection, data []byt
 	}
 
 	if m.config.Debug {
-		log.Printf("[ControlChannel] Stream %s closed: %s", close.StreamID, close.Reason)
+		log.Printf("[Hub:ControlChannel] Stream %s closed: %s", close.StreamID, close.Reason)
 	}
 
 	return nil
@@ -373,16 +373,16 @@ func (m *ControlChannelManager) handleEvent(hc *HostConnection, data []byte) err
 		// Update last activity time
 		hc.lastPongAt = time.Now()
 		if m.config.Debug {
-			log.Printf("[ControlChannel] Heartbeat from host %s", hc.hostID)
+			log.Printf("[Hub:ControlChannel] Heartbeat from host %s", hc.hostID)
 		}
 	case wsprotocol.EventAgentStatus:
 		// TODO: Forward to interested clients
 		if m.config.Debug {
-			log.Printf("[ControlChannel] Agent status update from host %s", hc.hostID)
+			log.Printf("[Hub:ControlChannel] Agent status update from host %s", hc.hostID)
 		}
 	default:
 		if m.config.Debug {
-			log.Printf("[ControlChannel] Unknown event from host %s: %s", hc.hostID, event.Event)
+			log.Printf("[Hub:ControlChannel] Unknown event from host %s: %s", hc.hostID, event.Event)
 		}
 	}
 
@@ -401,7 +401,7 @@ func (m *ControlChannelManager) pingLoop(hc *HostConnection) {
 		case <-ticker.C:
 			hc.lastPingAt = time.Now()
 			if err := hc.conn.WritePing(); err != nil {
-				log.Printf("[ControlChannel] Failed to ping host %s: %v", hc.hostID, err)
+				log.Printf("[Hub:ControlChannel] Failed to ping host %s: %v", hc.hostID, err)
 				hc.cancel()
 				return
 			}

@@ -9,6 +9,14 @@ import (
 
 // RuntimeHostService handles runtime host operations.
 type RuntimeHostService interface {
+	// Create creates a new host registration and returns a join token.
+	// The join token must be used with Join() to complete registration.
+	Create(ctx context.Context, req *CreateHostRequest) (*CreateHostResponse, error)
+
+	// Join completes host registration using a join token.
+	// Returns the HMAC secret key for future authentication.
+	Join(ctx context.Context, req *JoinHostRequest) (*JoinHostResponse, error)
+
 	// List returns runtime hosts matching the filter criteria.
 	List(ctx context.Context, opts *ListHostsOptions) (*ListHostsResponse, error)
 
@@ -77,6 +85,54 @@ type AgentHeartbeat struct {
 	AgentID         string `json:"agentId"`
 	Status          string `json:"status"`
 	ContainerStatus string `json:"containerStatus,omitempty"`
+}
+
+// CreateHostRequest is the request to create a new host registration.
+type CreateHostRequest struct {
+	Name         string            `json:"name"`
+	Capabilities []string          `json:"capabilities,omitempty"`
+	Labels       map[string]string `json:"labels,omitempty"`
+}
+
+// CreateHostResponse is returned when creating a new host.
+type CreateHostResponse struct {
+	HostID    string `json:"hostId"`
+	JoinToken string `json:"joinToken"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// JoinHostRequest is the request to complete host registration.
+type JoinHostRequest struct {
+	HostID       string   `json:"hostId"`
+	JoinToken    string   `json:"joinToken"`
+	Hostname     string   `json:"hostname"`
+	Version      string   `json:"version"`
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+// JoinHostResponse is returned after completing host registration.
+type JoinHostResponse struct {
+	SecretKey   string `json:"secretKey"` // Base64-encoded HMAC secret
+	HubEndpoint string `json:"hubEndpoint"`
+	HostID      string `json:"hostId"`
+}
+
+// Create creates a new host registration and returns a join token.
+func (s *runtimeHostService) Create(ctx context.Context, req *CreateHostRequest) (*CreateHostResponse, error) {
+	resp, err := s.c.transport.Post(ctx, "/api/v1/hosts", req, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[CreateHostResponse](resp)
+}
+
+// Join completes host registration using a join token.
+func (s *runtimeHostService) Join(ctx context.Context, req *JoinHostRequest) (*JoinHostResponse, error) {
+	resp, err := s.c.transport.Post(ctx, "/api/v1/hosts/join", req, nil)
+	if err != nil {
+		return nil, err
+	}
+	return apiclient.DecodeResponse[JoinHostResponse](resp)
 }
 
 // List returns runtime hosts matching the filter criteria.

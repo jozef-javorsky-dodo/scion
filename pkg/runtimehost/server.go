@@ -316,70 +316,77 @@ func (s *Server) Start(ctx context.Context) error {
 
 	log.Printf("Runtime Host API server starting on %s:%d (mode: %s)", s.config.Host, s.config.Port, s.config.Mode)
 	if s.config.Debug {
-		log.Printf("[RuntimeHost] Debug mode enabled")
-		log.Printf("[RuntimeHost] HostID: %s, HostName: %s", s.config.HostID, s.config.HostName)
+		log.Printf("[Host] Debug mode enabled")
+		log.Printf("[Host] HostID: %s, HostName: %s", s.config.HostID, s.config.HostName)
 		if s.config.HubEndpoint != "" {
-			log.Printf("[RuntimeHost] Hub endpoint: %s", s.config.HubEndpoint)
+			log.Printf("[Host] Hub endpoint: %s", s.config.HubEndpoint)
 		} else {
-			log.Printf("[RuntimeHost] Warning: No hub endpoint configured")
+			log.Printf("[Host] Warning: No hub endpoint configured")
 		}
 		if s.config.HubEnabled {
-			log.Printf("[RuntimeHost] Hub integration: enabled")
+			log.Printf("[Host] Hub integration: enabled")
 		} else {
-			log.Printf("[RuntimeHost] Hub integration: disabled")
+			log.Printf("[Host] Hub integration: disabled")
 		}
 	}
 
-	// Start heartbeat service if enabled and we have a Hub client
+	// Check if we have valid host credentials for Hub communication
+	hasValidCredentials := s.hostCredentials != nil && s.hostCredentials.SecretKey != ""
+
+	// Start heartbeat service if enabled and we have valid credentials
 	if s.config.HeartbeatEnabled && s.hubClient != nil && s.config.HostID != "" {
-		interval := s.config.HeartbeatInterval
-		if interval <= 0 {
-			interval = DefaultHeartbeatInterval
-		}
+		if !hasValidCredentials {
+			log.Printf("[Host:Heartbeat] Skipping: no valid host credentials (run 'scion hub register' first)")
+		} else {
+			interval := s.config.HeartbeatInterval
+			if interval <= 0 {
+				interval = DefaultHeartbeatInterval
+			}
 
-		s.heartbeat = NewHeartbeatService(
-			s.hubClient.RuntimeHosts(),
-			s.config.HostID,
-			interval,
-			s.manager,
-		)
-		s.heartbeat.SetVersion(s.version)
-		s.heartbeat.Start(ctx)
-		log.Printf("Heartbeat service started (interval: %s)", interval)
+			s.heartbeat = NewHeartbeatService(
+				s.hubClient.RuntimeHosts(),
+				s.config.HostID,
+				interval,
+				s.manager,
+			)
+			s.heartbeat.SetVersion(s.version)
+			s.heartbeat.Start(ctx)
+			log.Printf("[Host:Heartbeat] Started (interval: %s)", interval)
+		}
 	}
 
-	// Start control channel if enabled
+	// Start control channel if enabled and we have valid credentials
 	if s.config.ControlChannelEnabled && s.config.HubEndpoint != "" && s.config.HostID != "" {
-		var secretKey []byte
-		if s.hostCredentials != nil {
-			var err error
-			secretKey, err = base64.StdEncoding.DecodeString(s.hostCredentials.SecretKey)
+		if !hasValidCredentials {
+			log.Printf("[Host:ControlChannel] Skipping: no valid host credentials (run 'scion hub register' first)")
+		} else {
+			secretKey, err := base64.StdEncoding.DecodeString(s.hostCredentials.SecretKey)
 			if err != nil {
-				log.Printf("Warning: failed to decode host secret key for control channel: %v", err)
+				log.Printf("[Host:ControlChannel] Failed to decode secret key: %v", err)
+			} else {
+				ccConfig := ControlChannelConfig{
+					HubEndpoint:         s.config.HubEndpoint,
+					HostID:              s.config.HostID,
+					SecretKey:           secretKey,
+					Version:             s.version,
+					ReconnectInitial:    1 * time.Second,
+					ReconnectMax:        60 * time.Second,
+					ReconnectMultiplier: 2.0,
+					PingInterval:        30 * time.Second,
+					PongWait:            60 * time.Second,
+					WriteWait:           10 * time.Second,
+					Debug:               s.config.Debug,
+				}
+
+				s.controlChannel = NewControlChannelClient(ccConfig, s.Handler())
+				go func() {
+					if err := s.controlChannel.Connect(ctx); err != nil {
+						log.Printf("[Host:ControlChannel] Error: %v", err)
+					}
+				}()
+				log.Printf("[Host:ControlChannel] Connecting to Hub at %s", s.config.HubEndpoint)
 			}
 		}
-
-		ccConfig := ControlChannelConfig{
-			HubEndpoint:         s.config.HubEndpoint,
-			HostID:              s.config.HostID,
-			SecretKey:           secretKey,
-			Version:             s.version,
-			ReconnectInitial:    1 * time.Second,
-			ReconnectMax:        60 * time.Second,
-			ReconnectMultiplier: 2.0,
-			PingInterval:        30 * time.Second,
-			PongWait:            60 * time.Second,
-			WriteWait:           10 * time.Second,
-			Debug:               s.config.Debug,
-		}
-
-		s.controlChannel = NewControlChannelClient(ccConfig, s.Handler())
-		go func() {
-			if err := s.controlChannel.Connect(ctx); err != nil {
-				log.Printf("Control channel error: %v", err)
-			}
-		}()
-		log.Printf("Control channel connecting to Hub at %s", s.config.HubEndpoint)
 	}
 
 	errCh := make(chan error, 1)
@@ -511,15 +518,15 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		if s.config.Debug {
-			log.Printf("[RuntimeHost] --> %s %s (from %s)", r.Method, r.URL.Path, r.RemoteAddr)
+			log.Printf("[Host] --> %s %s (from %s)", r.Method, r.URL.Path, r.RemoteAddr)
 			if r.URL.RawQuery != "" {
-				log.Printf("[RuntimeHost]     query: %s", r.URL.RawQuery)
+				log.Printf("[Host]     query: %s", r.URL.RawQuery)
 			}
 			for name, values := range r.Header {
 				if name == "Authorization" {
-					log.Printf("[RuntimeHost]     header: %s: [REDACTED]", name)
+					log.Printf("[Host]     header: %s: [REDACTED]", name)
 				} else {
-					log.Printf("[RuntimeHost]     header: %s: %s", name, strings.Join(values, ", "))
+					log.Printf("[Host]     header: %s: %s", name, strings.Join(values, ", "))
 				}
 			}
 		}
@@ -527,10 +534,10 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(wrapped, r)
 
 		if s.config.Debug {
-			log.Printf("[RuntimeHost] <-- %s %s %d (%s)",
+			log.Printf("[Host] <-- %s %s %d (%s)",
 				r.Method, r.URL.Path, wrapped.statusCode, time.Since(start))
 		} else {
-			log.Printf("[RuntimeHost] %s %s %d %s",
+			log.Printf("[Host] %s %s %d %s",
 				r.Method, r.URL.Path, wrapped.statusCode, time.Since(start))
 		}
 	})

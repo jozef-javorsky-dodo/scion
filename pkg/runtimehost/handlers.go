@@ -179,11 +179,11 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Debug log incoming request
 	if s.config.Debug {
-		log.Printf("[RuntimeHost] Creating agent: name=%s, agentID=%s, groveID=%s", req.Name, req.AgentID, req.GroveID)
-		log.Printf("[RuntimeHost] Hub credentials: hubEndpoint=%q, agentToken=%v, agentID=%q",
+		log.Printf("[Host] Creating agent: name=%s, agentID=%s, groveID=%s", req.Name, req.AgentID, req.GroveID)
+		log.Printf("[Host] Hub credentials: hubEndpoint=%q, agentToken=%v, agentID=%q",
 			req.HubEndpoint, req.AgentToken != "", req.AgentID)
 		if req.Config != nil {
-			log.Printf("[RuntimeHost] Config: template=%s, image=%s, templateID=%s",
+			log.Printf("[Host] Config: template=%s, image=%s, templateID=%s",
 				req.Config.Template, req.Config.Image, req.Config.TemplateID)
 		}
 	}
@@ -216,19 +216,19 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 	if req.AgentToken != "" {
 		env["SCION_HUB_TOKEN"] = req.AgentToken
 		if s.config.Debug {
-			log.Printf("[RuntimeHost] Set SCION_HUB_TOKEN (length=%d)", len(req.AgentToken))
+			log.Printf("[Host] Set SCION_HUB_TOKEN (length=%d)", len(req.AgentToken))
 		}
 	}
 	if req.HubEndpoint != "" {
 		env["SCION_HUB_URL"] = req.HubEndpoint
 		if s.config.Debug {
-			log.Printf("[RuntimeHost] Set SCION_HUB_URL=%s", req.HubEndpoint)
+			log.Printf("[Host] Set SCION_HUB_URL=%s", req.HubEndpoint)
 		}
 	}
 	if req.AgentID != "" {
 		env["SCION_AGENT_ID"] = req.AgentID
 		if s.config.Debug {
-			log.Printf("[RuntimeHost] Set SCION_AGENT_ID=%s", req.AgentID)
+			log.Printf("[Host] Set SCION_AGENT_ID=%s", req.AgentID)
 		}
 	}
 
@@ -239,12 +239,12 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Debug log final env count
 	if s.config.Debug {
-		log.Printf("[RuntimeHost] Final environment has %d variables", len(env))
+		log.Printf("[Host] Final environment has %d variables", len(env))
 		for k := range env {
 			if k == "SCION_HUB_TOKEN" {
-				log.Printf("[RuntimeHost]   %s=<redacted>", k)
+				log.Printf("[Host]   %s=<redacted>", k)
 			} else {
-				log.Printf("[RuntimeHost]   %s=%s", k, env[k])
+				log.Printf("[Host]   %s=%s", k, env[k])
 			}
 		}
 	}
@@ -275,7 +275,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		if templatePath != "" {
 			opts.Template = templatePath
 			if s.config.Debug {
-				log.Printf("[RuntimeHost] Using hydrated template from: %s", templatePath)
+				log.Printf("[Host] Using hydrated template from: %s", templatePath)
 			}
 		}
 	}

@@ -46,6 +46,9 @@ var (
 	// Template cache settings for Runtime Host
 	templateCacheDir string
 	templateCacheMax int64
+
+	// Testing flag to simulate remote host behavior when running co-located
+	simulateRemoteHost bool
 )
 
 // serverCmd represents the server command
@@ -445,6 +448,12 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			HubToken:             devAuthToken, // Use dev token if available
 			TemplateCacheDir:     templateCacheDir,
 			TemplateCacheMaxSize: templateCacheMax,
+
+			// Control channel and heartbeat - enabled when Hub is configured.
+			// When co-located (both enabled, not simulating remote), skip control channel
+			// since RuntimeHost can communicate directly via localhost HTTP.
+			ControlChannelEnabled: hubEndpointForRH != "" && (simulateRemoteHost || !enableHub),
+			HeartbeatEnabled:      hubEndpointForRH != "",
 		}
 
 		// Create Runtime Host server
@@ -462,20 +471,32 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 		}()
 	}
 
-	// When both Hub and Runtime Host are enabled together, set up the dispatcher
-	// for automatic agent handoff and register the global grove.
-	if enableHub && cfg.RuntimeHost.Enabled && s != nil && hubSrv != nil && mgr != nil {
-		// Set up the dispatcher to enable automatic agent handoff
-		dispatcher := newAgentDispatcherAdapter(mgr, s, hostID)
+	// Set up the HTTP dispatcher for Hub to dispatch agents to RuntimeHosts.
+	// This uses the same code path whether RuntimeHost is co-located or remote.
+	if enableHub && hubSrv != nil {
+		dispatcher := hubSrv.CreateAuthenticatedDispatcher()
 		hubSrv.SetDispatcher(dispatcher)
-		log.Printf("Agent dispatcher configured for co-located runtime host")
+		log.Printf("Agent dispatcher configured (HTTP-based)")
+	}
+
+	// When RuntimeHost is also enabled and not simulating remote host,
+	// register the global grove and this host for co-located operation.
+	if enableHub && cfg.RuntimeHost.Enabled && s != nil && hubSrv != nil && mgr != nil && !simulateRemoteHost {
+		// Build RuntimeHost endpoint for registration
+		rhEndpoint := fmt.Sprintf("http://%s:%d", cfg.RuntimeHost.Host, cfg.RuntimeHost.Port)
+		// If binding to 0.0.0.0, use localhost for the endpoint
+		if cfg.RuntimeHost.Host == "0.0.0.0" {
+			rhEndpoint = fmt.Sprintf("http://localhost:%d", cfg.RuntimeHost.Port)
+		}
 
 		// Register global grove and runtime host
-		if err := registerGlobalGroveAndHost(ctx, s, hostID, hostName, rt); err != nil {
+		if err := registerGlobalGroveAndHost(ctx, s, hostID, hostName, rhEndpoint, rt); err != nil {
 			log.Printf("Warning: failed to register global grove: %v", err)
 		} else {
-			log.Printf("Registered global grove with runtime host %s", hostName)
+			log.Printf("Registered global grove with runtime host %s (endpoint: %s)", hostName, rhEndpoint)
 		}
+	} else if simulateRemoteHost && enableHub && cfg.RuntimeHost.Enabled {
+		log.Printf("Simulating remote host: skipping automatic global grove registration")
 	}
 
 	// Wait for either an error or context cancellation
@@ -492,7 +513,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 
 // registerGlobalGroveAndHost creates the global grove and registers this
 // runtime host as a contributor. This enables automatic agent handoff.
-func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, hostName string, rt runtime.Runtime) error {
+func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, hostName, endpoint string, rt runtime.Runtime) error {
 	// Check if global grove already exists
 	globalGrove, err := s.GetGroveBySlug(ctx, GlobalGroveName)
 	if err != nil && err != store.ErrNotFound {
@@ -541,6 +562,7 @@ func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, host
 			Version:         "0.1.0",
 			Status:          store.HostStatusOnline,
 			ConnectionState: "connected",
+			Endpoint:        endpoint,
 			Capabilities: &store.HostCapabilities{
 				WebPTY: false,
 				Sync:   true,
@@ -555,9 +577,10 @@ func registerGlobalGroveAndHost(ctx context.Context, s store.Store, hostID, host
 			return fmt.Errorf("failed to create runtime host: %w", err)
 		}
 	} else {
-		// Update existing host status
+		// Update existing host status and endpoint
 		host.Status = store.HostStatusOnline
 		host.ConnectionState = "connected"
+		host.Endpoint = endpoint
 		host.LastHeartbeat = time.Now()
 		if err := s.UpdateRuntimeHost(ctx, host); err != nil {
 			return fmt.Errorf("failed to update runtime host: %w", err)
@@ -823,4 +846,7 @@ func init() {
 	// Template cache flags (for Runtime Host)
 	serverStartCmd.Flags().StringVar(&templateCacheDir, "template-cache-dir", "", "Directory for caching templates from Hub (default: ~/.scion/cache/templates)")
 	serverStartCmd.Flags().Int64Var(&templateCacheMax, "template-cache-max", 100*1024*1024, "Maximum template cache size in bytes (default: 100MB)")
+
+	// Testing flags
+	serverStartCmd.Flags().BoolVar(&simulateRemoteHost, "simulate-remote-host", false, "Skip co-located optimizations to test full remote host code path")
 }

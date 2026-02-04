@@ -107,7 +107,7 @@ func (s *Server) handleWorkspaceUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.config.Debug {
-		log.Printf("[RuntimeHost] Workspace upload requested for agent %s to %s/%s",
+		log.Printf("[Host] Workspace upload requested for agent %s to %s/%s",
 			req.AgentID, bucket, req.StoragePath)
 	}
 
@@ -155,7 +155,7 @@ func (s *Server) handleWorkspaceUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.config.Debug {
-		log.Printf("[RuntimeHost] Workspace upload complete: %d files, %d bytes",
+		log.Printf("[Host] Workspace upload complete: %d files, %d bytes",
 			resp.UploadedFiles, resp.UploadedBytes)
 	}
 
@@ -199,7 +199,7 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.config.Debug {
-		log.Printf("[RuntimeHost] Workspace apply requested for agent %s from %s/%s",
+		log.Printf("[Host] Workspace apply requested for agent %s from %s/%s",
 			req.AgentID, bucket, req.StoragePath)
 	}
 
@@ -227,7 +227,7 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	if req.Manifest != nil && len(req.Manifest.Files) > 0 {
 		if err := s.applyFilePermissions(workspacePath, req.Manifest.Files); err != nil {
 			// Log but don't fail - permissions are optional
-			log.Printf("[RuntimeHost] Warning: failed to apply file permissions: %v", err)
+			log.Printf("[Host] Warning: failed to apply file permissions: %v", err)
 		}
 		filesApplied = len(req.Manifest.Files)
 		for _, f := range req.Manifest.Files {
@@ -245,7 +245,7 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.config.Debug {
-		log.Printf("[RuntimeHost] Workspace apply complete: %d files, %d bytes",
+		log.Printf("[Host] Workspace apply complete: %d files, %d bytes",
 			resp.FilesApplied, resp.BytesTransferred)
 	}
 

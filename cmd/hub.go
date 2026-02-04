@@ -12,6 +12,7 @@ import (
 	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/credentials"
 	"github.com/ptone/scion-agent/pkg/harness"
+	"github.com/ptone/scion-agent/pkg/hostcredentials"
 	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/ptone/scion-agent/pkg/util"
@@ -540,13 +541,28 @@ func runHubRegister(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Save the host token and ID to global settings
-		if resp.HostToken != "" {
-			if err := config.UpdateSetting(globalDir, "hub.hostToken", resp.HostToken, true); err != nil {
-				fmt.Printf("Warning: failed to save host token: %v\n", err)
-			}
+		// Save the host ID to global settings (for backward compatibility)
+		if resp.Host != nil && resp.Host.ID != "" {
 			if err := config.UpdateSetting(globalDir, "hub.hostId", resp.Host.ID, true); err != nil {
 				fmt.Printf("Warning: failed to save host ID: %v\n", err)
+			}
+		}
+	}
+
+	// Save HMAC credentials to host-credentials.json for RuntimeHost authentication
+	endpoint := GetHubEndpoint(settings)
+	if resp.SecretKey != "" && resp.Host != nil {
+		credStore := hostcredentials.NewStore("")
+		if err := credStore.SaveFromJoinResponse(resp.Host.ID, resp.SecretKey, endpoint); err != nil {
+			fmt.Printf("Warning: failed to save host credentials: %v\n", err)
+		} else {
+			fmt.Printf("Host credentials saved to %s\n", credStore.Path())
+		}
+	} else if resp.HostToken != "" {
+		// Fall back to saving old-style token (for backward compatibility with older Hub versions)
+		if globalDir != "" {
+			if err := config.UpdateSetting(globalDir, "hub.hostToken", resp.HostToken, true); err != nil {
+				fmt.Printf("Warning: failed to save host token: %v\n", err)
 			}
 		}
 	}
