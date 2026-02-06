@@ -45,19 +45,37 @@ func (d *ClaudeDialect) Parse(data map[string]interface{}) (*hooks.Event, error)
 		RawName: rawName,
 		Dialect: "claude",
 		Data: hooks.EventData{
-			Prompt:   getString(data, "prompt"),
-			ToolName: getString(data, "tool_name"),
-			Message:  getString(data, "message"),
-			Reason:   getString(data, "reason"),
-			Source:   getString(data, "source"),
-			Raw:      data,
+			Prompt:    getString(data, "prompt"),
+			ToolName:  getString(data, "tool_name"),
+			Message:   getString(data, "message"),
+			Reason:    getString(data, "reason"),
+			Source:    getString(data, "source"),
+			SessionID: getString(data, "session_id"),
+			Raw:       data,
 		},
 	}
 
 	// Extract tool input/output if available
-	if toolInput, ok := data["tool_input"]; ok {
-		if str, ok := toolInput.(string); ok {
+	if val, ok := data["tool_input"]; ok {
+		if str, ok := val.(string); ok {
 			event.Data.ToolInput = str
+		}
+	}
+	if val, ok := data["tool_output"]; ok {
+		if str, ok := val.(string); ok {
+			event.Data.ToolOutput = str
+		}
+	}
+
+	// Extract status fields
+	if val, ok := data["success"]; ok {
+		if b, ok := val.(bool); ok {
+			event.Data.Success = b
+		}
+	}
+	if val, ok := data["error"]; ok {
+		if str, ok := val.(string); ok {
+			event.Data.Error = str
 		}
 	}
 

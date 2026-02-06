@@ -31,6 +31,9 @@ var SpanMapping = map[string]string{
 	hooks.EventAgentEnd:        "agent.turn.end",
 	hooks.EventNotification:    "agent.notification",
 	hooks.EventResponseComplete: "agent.response.complete",
+	hooks.EventPreStart:        "agent.lifecycle.pre_start",
+	hooks.EventPostStart:       "agent.lifecycle.post_start",
+	hooks.EventPreStop:         "agent.lifecycle.pre_stop",
 }
 
 // inProgressSpan tracks a span that has been started but not ended.
