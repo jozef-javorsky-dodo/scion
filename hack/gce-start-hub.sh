@@ -27,26 +27,26 @@ fi
 
 # We use a temp file locally to avoid escaping hell on gcloud compute ssh
 TMP_SERVICE=$(mktemp)
-cat <<EOF > "$TMP_SERVICE"
-[Unit]
+printf "[Unit]
 Description=Scion Hub API Server
 After=network.target nats-server.service
 
 [Service]
 User=scion
 Group=scion
-WorkingDirectory=${REPO_DIR}
+WorkingDirectory=%s
 EnvironmentFile=/home/scion/.scion/hub.env
+Environment=\"PATH=/usr/local/bin:/usr/bin:/bin\"
 # Use journald for log management
 StandardOutput=journal
 StandardError=journal
-ExecStart=${SCION_BIN} --global server start --enable-hub --enable-runtime-host --port 9810 --runtime-host-port 9800
+ExecStart=%s --global server start --enable-hub --enable-runtime-host --port 9810 --runtime-host-port 9800
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-EOF
+" "${REPO_DIR}" "${SCION_BIN}" > "$TMP_SERVICE"
 
 gcloud compute scp "$TMP_SERVICE" "${INSTANCE_NAME}:/tmp/scion-hub.service" --zone="${ZONE}"
 rm "$TMP_SERVICE"
@@ -81,6 +81,12 @@ gcloud compute ssh "${INSTANCE_NAME}" --zone="${ZONE}" --command '
         sudo systemctl stop scion-hub
     fi
 
+    echo "Debug: Git version info:"
+    git version
+    which git
+    sudo -u scion git version
+    sudo -u scion which git
+
     # 2. Update code as scion user
     echo "Updating repository..."
     sudo -u scion sh -c "cd /home/scion/scion-agent && git pull"
@@ -96,6 +102,9 @@ gcloud compute ssh "${INSTANCE_NAME}" --zone="${ZONE}" --command '
     # 5. Move systemd unit file
     echo "Updating systemd unit file..."
     sudo mv /tmp/scion-hub.service /etc/systemd/system/scion-hub.service
+
+    echo "Debug: Service file content:"
+    sudo systemctl cat scion-hub || true
 
     # 6. Fix Certificate Permissions for Caddy
     echo "Fixing certificate permissions for Caddy..."

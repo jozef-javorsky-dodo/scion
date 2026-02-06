@@ -25,26 +25,31 @@ func IsGitRepoDir(dir string) bool {
 	return err == nil
 }
 
-// GetGitVersion returns the git version string.
-func GetGitVersion() (string, error) {
-	cmd := exec.Command("git", "--version")
+// GetGitVersion returns the git version string and the path to the git binary used.
+func GetGitVersion() (string, string, error) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		return "", "", err
+	}
+	cmd := exec.Command(gitPath, "--version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", err
+		return "", gitPath, err
 	}
 	// Output is usually "git version 2.47.0"
-	return strings.TrimPrefix(strings.TrimSpace(string(output)), "git version "), nil
+	version := strings.TrimPrefix(strings.TrimSpace(string(output)), "git version ")
+	return version, gitPath, nil
 }
 
 // CheckGitVersion returns an error if the git version is less than 2.47.0.
 func CheckGitVersion() error {
-	version, err := GetGitVersion()
+	version, gitPath, err := GetGitVersion()
 	if err != nil {
 		return fmt.Errorf("failed to get git version: %w", err)
 	}
 
 	if err := CompareGitVersion(version, 2, 47); err != nil {
-		return fmt.Errorf("git version 2.47.0 or newer is required; scion requires worktree support with relative paths (found %s)", version)
+		return fmt.Errorf("git version 2.47.0 or newer is required; scion requires worktree support with relative paths (found %s at %s)", version, gitPath)
 	}
 
 	return nil
