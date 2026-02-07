@@ -47,6 +47,14 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 	}
 	groveName := config.GetGroveName(projectDir)
 
+	// If resuming, verify the agent exists before proceeding
+	if opts.Resume {
+		agentDir := filepath.Join(projectDir, "agents", opts.Name)
+		if _, err := os.Stat(agentDir); os.IsNotExist(err) {
+			return nil, fmt.Errorf("cannot resume agent '%s': agent does not exist. Use 'scion start' to create a new agent", opts.Name)
+		}
+	}
+
 	agentDir, agentHome, agentWorkspace, finalScionCfg, err := GetAgent(ctx, opts.Name, opts.Template, opts.Image, opts.GrovePath, opts.Profile, "", opts.Branch, opts.Workspace)
 	if err != nil {
 		return nil, err

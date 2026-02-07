@@ -1,11 +1,14 @@
 package agent
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/runtime"
 )
 
 func TestExtractWorkspaceFromVolumes(t *testing.T) {
@@ -171,5 +174,55 @@ func TestBuildAgentEnv(t *testing.T) {
 		if _, ok := envMap[k]; ok {
 			t.Errorf("expected key %s to be omitted, but it was present", k)
 		}
+	}
+}
+
+func TestStartResumeNonExistentAgent(t *testing.T) {
+	// Create a temporary directory to act as the grove
+	tmpDir := t.TempDir()
+
+	// Move to tmpDir to avoid being inside the project's git repo
+	oldWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldWd)
+
+	// Mock HOME for global settings
+	originalHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", originalHome)
+	os.Setenv("HOME", tmpDir)
+
+	// Create .scion directory structure (minimum required)
+	scionDir := filepath.Join(tmpDir, ".scion")
+	if err := os.MkdirAll(scionDir, 0755); err != nil {
+		t.Fatalf("failed to create .scion dir: %v", err)
+	}
+
+	// Create a mock runtime
+	mockRuntime := &runtime.MockRuntime{
+		ListFunc: func(ctx context.Context, labelFilter map[string]string) ([]api.AgentInfo, error) {
+			return []api.AgentInfo{}, nil
+		},
+	}
+
+	mgr := NewManager(mockRuntime)
+
+	// Try to resume a non-existent agent
+	opts := api.StartOptions{
+		Name:      "non-existent-agent",
+		GrovePath: scionDir,
+		Resume:    true,
+	}
+
+	_, err := mgr.Start(context.Background(), opts)
+	if err == nil {
+		t.Fatal("expected error when resuming non-existent agent, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "cannot resume agent") {
+		t.Errorf("expected error message to contain 'cannot resume agent', got: %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("expected error message to contain 'does not exist', got: %v", err)
 	}
 }
