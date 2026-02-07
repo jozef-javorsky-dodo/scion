@@ -285,6 +285,7 @@ func runHubStatus(cmd *cobra.Command, args []string) error {
 			"endpoint":      endpoint,
 			"configured":    settings.IsHubConfigured(),
 			"groveId":       settings.GroveID,
+			"scionVersion":  version.Short(),
 		}
 		if settings.Hub != nil {
 			status["brokerId"] = settings.Hub.BrokerID
@@ -355,9 +356,6 @@ func runHubStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println("Method:     Not authenticated")
 	} else {
 		fmt.Printf("Method:     %s\n", authInfo.Method)
-		if authInfo.Source != "" {
-			fmt.Printf("Source:     %s\n", authInfo.Source)
-		}
 		if authInfo.IsDevAuth {
 			fmt.Println("            (development mode - not for production use)")
 		}
@@ -396,14 +394,13 @@ func runHubStatus(cmd *cobra.Command, args []string) error {
 			fmt.Printf("\nConnection: ok\n")
 			fmt.Printf("Hub Version: %s\n", health.Version)
 			fmt.Printf("Hub Status:  %s\n", health.Status)
+			fmt.Printf("Scion Version: %s\n", version.Short())
 
 			// If OAuth, verify auth is actually working by calling /auth/me
 			if authInfo.HasOAuth {
 				meCtx, meCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer meCancel()
-				if user, err := client.Auth().Me(meCtx); err == nil {
-					fmt.Printf("\nAuthenticated as: %s (%s) [%s]\n", user.DisplayName, user.Email, user.Role)
-				} else {
+				if _, err := client.Auth().Me(meCtx); err != nil {
 					fmt.Printf("\nAuth verification: failed (%s)\n", err)
 					fmt.Println("Run 'scion hub auth login' to re-authenticate.")
 				}

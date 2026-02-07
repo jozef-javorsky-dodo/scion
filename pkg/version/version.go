@@ -67,3 +67,31 @@ func Get() string {
 
 	return fmt.Sprintf("Commit: %s\nBuild Time: %s", commit, buildTime)
 }
+
+// Short returns a short version string (either Version or short Commit hash).
+func Short() string {
+	if Version != "" {
+		return Version
+	}
+
+	commit := Commit
+	if commit == "" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, setting := range info.Settings {
+				if setting.Key == "vcs.revision" {
+					commit = setting.Value
+				}
+			}
+		}
+	}
+
+	if len(commit) > 7 {
+		commit = commit[:7]
+	}
+
+	if commit == "" {
+		return "unknown"
+	}
+
+	return commit
+}
