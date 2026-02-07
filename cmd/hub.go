@@ -76,15 +76,20 @@ Examples:
 
 // hubGrovesDeleteCmd deletes a grove from the Hub
 var hubGrovesDeleteCmd = &cobra.Command{
-	Use:   "delete <grove-name>",
+	Use:   "delete [grove-name]",
 	Short: "Delete a grove from the Hub",
 	Long: `Delete a grove from the Hub.
 
 This will remove the grove and all associated broker provider relationships.
 Agents within the grove will also be deleted unless --preserve-agents is set.
 
+If no grove name is provided, the current grove is used.
+
 Examples:
-  # Delete a grove (with confirmation)
+  # Delete the current grove (with confirmation)
+  scion hub groves delete
+
+  # Delete a grove by name (with confirmation)
   scion hub groves delete my-project
 
   # Delete without confirmation
@@ -92,7 +97,7 @@ Examples:
 
   # Delete grove but preserve agents
   scion hub groves delete my-project --preserve-agents`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MaximumNArgs(1),
 	RunE: runHubGrovesDelete,
 }
 
@@ -825,10 +830,13 @@ func runHubGrovesInfo(cmd *cobra.Command, args []string) error {
 }
 
 func runHubGrovesDelete(cmd *cobra.Command, args []string) error {
-	groveName := args[0]
-
 	// Resolve grove path to find project settings
-	resolvedPath, _, err := config.ResolveGrovePath(grovePath)
+	gp := grovePath
+	if gp == "" && globalMode {
+		gp = "global"
+	}
+
+	resolvedPath, isGlobal, err := config.ResolveGrovePath(gp)
 	if err != nil {
 		return fmt.Errorf("failed to resolve grove path: %w", err)
 	}
@@ -836,6 +844,24 @@ func runHubGrovesDelete(cmd *cobra.Command, args []string) error {
 	settings, err := config.LoadSettings(resolvedPath)
 	if err != nil {
 		return fmt.Errorf("failed to load settings: %w", err)
+	}
+
+	// Determine grove name from args or current grove
+	var groveName string
+	if len(args) > 0 {
+		groveName = args[0]
+	} else {
+		// Use current grove name
+		if isGlobal {
+			groveName = "global"
+		} else {
+			gitRemote := util.GetGitRemote()
+			if gitRemote != "" {
+				groveName = util.ExtractRepoName(gitRemote)
+			} else {
+				groveName = filepath.Base(filepath.Dir(resolvedPath))
+			}
+		}
 	}
 
 	client, err := getHubClient(settings)
