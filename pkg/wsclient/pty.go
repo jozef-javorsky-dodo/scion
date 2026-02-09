@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -143,11 +144,16 @@ func (c *PTYClient) Run() error {
 		return fmt.Errorf("not connected")
 	}
 
+	slog.Debug("PTY client Run() starting")
+
 	// Put terminal in raw mode
 	if err := c.setupTerminal(); err != nil {
 		return fmt.Errorf("failed to setup terminal: %w", err)
 	}
-	defer c.restoreTerminal()
+	defer func() {
+		slog.Debug("PTY client restoring terminal")
+		c.restoreTerminal()
+	}()
 
 	// Set up signal handler for resize
 	go c.handleResize()
@@ -157,9 +163,11 @@ func (c *PTYClient) Run() error {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		select {
-		case <-sigCh:
+		case sig := <-sigCh:
+			slog.Debug("PTY client received signal", "signal", sig)
 			c.cancel()
 		case <-c.ctx.Done():
+			slog.Debug("PTY client signal handler: context done")
 		}
 	}()
 
@@ -167,19 +175,28 @@ func (c *PTYClient) Run() error {
 
 	// Read from stdin, send to WebSocket
 	go func() {
-		errCh <- c.readFromStdin()
+		slog.Debug("PTY client stdin reader starting")
+		err := c.readFromStdin()
+		slog.Debug("PTY client stdin reader exited", "error", err)
+		errCh <- err
 	}()
 
 	// Read from WebSocket, write to stdout
 	go func() {
-		errCh <- c.readFromWebSocket()
+		slog.Debug("PTY client websocket reader starting")
+		err := c.readFromWebSocket()
+		slog.Debug("PTY client websocket reader exited", "error", err)
+		errCh <- err
 	}()
 
 	// Wait for either direction to fail
+	slog.Debug("PTY client waiting for goroutines")
 	err := <-errCh
+	slog.Debug("PTY client first goroutine returned", "error", err)
 	c.cancel()
 
 	// Close connection
+	slog.Debug("PTY client sending close message")
 	c.writeMu.Lock()
 	c.conn.WriteMessage(
 		websocket.CloseMessage,
@@ -187,6 +204,7 @@ func (c *PTYClient) Run() error {
 	)
 	c.writeMu.Unlock()
 
+	slog.Debug("PTY client Run() returning", "error", err)
 	return err
 }
 
@@ -249,6 +267,7 @@ func (c *PTYClient) readFromStdin() error {
 		for {
 			n, err := os.Stdin.Read(buf)
 			if err != nil {
+				slog.Debug("PTY stdin inner reader got error", "error", err)
 				readCh <- readResult{nil, err}
 				return
 			}
@@ -267,17 +286,21 @@ func (c *PTYClient) readFromStdin() error {
 			// Context cancelled - return immediately.
 			// The reader goroutine will eventually exit when stdin is closed
 			// or when the process exits.
+			slog.Debug("PTY stdin reader: context cancelled")
 			return c.ctx.Err()
 		case result := <-readCh:
 			if result.err != nil {
 				if result.err == io.EOF {
+					slog.Debug("PTY stdin reader: EOF")
 					return nil
 				}
+				slog.Debug("PTY stdin reader: error", "error", result.err)
 				return result.err
 			}
 
 			msg := wsprotocol.NewPTYDataMessage(result.data)
 			if err := c.writeToWebSocket(msg); err != nil {
+				slog.Debug("PTY stdin reader: write error", "error", err)
 				return err
 			}
 		}
@@ -294,13 +317,16 @@ func (c *PTYClient) readFromWebSocket() error {
 	for {
 		select {
 		case <-c.ctx.Done():
+			slog.Debug("PTY websocket reader: context cancelled")
 			return c.ctx.Err()
 		default:
 		}
 
 		_, data, err := c.conn.ReadMessage()
 		if err != nil {
+			slog.Debug("PTY websocket reader: read error", "error", err)
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				slog.Debug("PTY websocket reader: clean close")
 				return nil
 			}
 			// Check if this is a timeout on initial data
@@ -315,6 +341,7 @@ func (c *PTYClient) readFromWebSocket() error {
 		// Clear read deadline after receiving first data
 		if !c.receivedData {
 			c.receivedData = true
+			slog.Debug("PTY websocket reader: received first data, clearing deadline")
 			if err := c.conn.SetReadDeadline(time.Time{}); err != nil {
 				return fmt.Errorf("failed to clear read deadline: %w", err)
 			}
@@ -338,6 +365,7 @@ func (c *PTYClient) readFromWebSocket() error {
 			if err := json.Unmarshal(data, &errMsg); err != nil {
 				continue
 			}
+			slog.Debug("PTY websocket reader: server error", "code", errMsg.Code, "message", errMsg.Message)
 			return fmt.Errorf("server error: %s - %s", errMsg.Code, errMsg.Message)
 		}
 	}
@@ -357,11 +385,13 @@ func (c *PTYClient) writeToWebSocket(v interface{}) error {
 
 // Close closes the PTY client.
 func (c *PTYClient) Close() error {
+	slog.Debug("PTY client Close() called")
 	if c.cancel != nil {
 		c.cancel()
 	}
 	c.restoreTerminal()
 	if c.conn != nil {
+		slog.Debug("PTY client closing websocket connection")
 		return c.conn.Close()
 	}
 	return nil
