@@ -46,6 +46,11 @@ var (
 	brokerStartAutoProvide bool
 	brokerStartDebug       bool
 
+	// broker restart flags
+	brokerRestartPort        int
+	brokerRestartAutoProvide bool
+	brokerRestartDebug       bool
+
 	// broker provide/withdraw flags
 	brokerGroveID      string
 	brokerBrokerID     string // --broker flag for remote broker operations
@@ -65,6 +70,7 @@ Commands:
   status       Show broker status (server, registration, groves)
   start        Start the broker server (as daemon by default)
   stop         Stop the broker daemon
+  restart      Stop and restart the broker daemon
   register     Register this host as a Runtime Broker with the Hub
   deregister   Remove this broker from the Hub
   provide      Add this broker as a provider for a grove
@@ -245,6 +251,30 @@ Examples:
 	RunE: runBrokerStop,
 }
 
+// brokerRestartCmd restarts the broker daemon
+var brokerRestartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Restart the Runtime Broker daemon",
+	Long: `Restart the Runtime Broker daemon.
+
+This command stops the currently running broker daemon and starts a new one
+using the current scion binary. This is useful after installing a new version
+of scion to pick up the updated binary.
+
+If the broker is not running as a daemon, this command will return an error.
+
+Examples:
+  # Restart the broker daemon
+  scion broker restart
+
+  # Restart with a different port
+  scion broker restart --port 9801
+
+  # Restart with auto-provide enabled
+  scion broker restart --auto-provide`,
+	RunE: runBrokerRestart,
+}
+
 var brokerStatusJSON bool
 
 func init() {
@@ -256,6 +286,12 @@ func init() {
 	brokerCmd.AddCommand(brokerWithdrawCmd)
 	brokerCmd.AddCommand(brokerStatusCmd)
 	brokerCmd.AddCommand(brokerStopCmd)
+	brokerCmd.AddCommand(brokerRestartCmd)
+
+	// Restart flags
+	brokerRestartCmd.Flags().IntVar(&brokerRestartPort, "port", DefaultBrokerPort, "Runtime Broker API port")
+	brokerRestartCmd.Flags().BoolVar(&brokerRestartAutoProvide, "auto-provide", false, "Automatically add as provider for new groves")
+	brokerRestartCmd.Flags().BoolVar(&brokerRestartDebug, "debug", false, "Enable debug logging (verbose output)")
 
 	// Status flags
 	brokerStatusCmd.Flags().BoolVar(&brokerStatusJSON, "json", false, "Output in JSON format")
@@ -702,6 +738,75 @@ func runBrokerStop(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Broker daemon stopped.")
 	return nil
+}
+
+func runBrokerRestart(cmd *cobra.Command, args []string) error {
+	// Get global directory for daemon files
+	globalDir, err := config.GetGlobalDir()
+	if err != nil {
+		return fmt.Errorf("failed to get global directory: %w", err)
+	}
+
+	// Check if daemon is running
+	running, pid, _ := daemon.Status(globalDir)
+	if !running {
+		// Check if server is running on the port (might be foreground)
+		health, err := checkLocalBrokerServer(DefaultBrokerPort)
+		if err == nil {
+			return fmt.Errorf("broker server is running (status: %s) but not as a daemon.\n\nIf running in foreground, use Ctrl+C to stop it and then 'scion broker start' to restart.", health.Status)
+		}
+		return fmt.Errorf("broker daemon is not running.\n\nUse 'scion broker start' to start it.")
+	}
+
+	// Stop the daemon
+	fmt.Printf("Stopping broker daemon (PID: %d)...\n", pid)
+	if err := daemon.Stop(globalDir); err != nil {
+		return fmt.Errorf("failed to stop daemon: %w", err)
+	}
+
+	// Wait for the process to exit
+	if err := daemon.WaitForExit(globalDir, 10*time.Second); err != nil {
+		return fmt.Errorf("failed to stop broker: %w", err)
+	}
+	fmt.Println("Broker daemon stopped.")
+
+	// Find the current scion executable
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to find scion executable: %w", err)
+	}
+
+	// Build args for the daemon process
+	daemonArgs := []string{"server", "start", "--enable-runtime-broker"}
+	if brokerRestartPort != DefaultBrokerPort {
+		daemonArgs = append(daemonArgs, fmt.Sprintf("--runtime-broker-port=%d", brokerRestartPort))
+	}
+	if brokerRestartAutoProvide {
+		daemonArgs = append(daemonArgs, "--auto-provide")
+	}
+	if brokerRestartDebug {
+		daemonArgs = append(daemonArgs, "--debug")
+	}
+
+	// Start new daemon
+	fmt.Printf("Starting broker with new binary...\n")
+	if err := daemon.Start(executable, daemonArgs, globalDir); err != nil {
+		return fmt.Errorf("failed to start daemon: %w", err)
+	}
+
+	// Verify it started
+	time.Sleep(500 * time.Millisecond)
+	running, pid, _ = daemon.Status(globalDir)
+	if !running {
+		return fmt.Errorf("daemon failed to start. Check log at: %s", daemon.GetLogPath(globalDir))
+	}
+
+	fmt.Printf("Broker restarted (PID: %d)\n", pid)
+	fmt.Printf("Log file: %s\n", daemon.GetLogPath(globalDir))
+	fmt.Println()
+
+	// Show broker status
+	return runBrokerStatus(cmd, args)
 }
 
 func runBrokerProvide(cmd *cobra.Command, args []string) error {

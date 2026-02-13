@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 const (
@@ -178,6 +179,21 @@ func ReadPID(globalDir string) (int, error) {
 func RemovePID(globalDir string) error {
 	pidPath := filepath.Join(globalDir, PIDFile)
 	return os.Remove(pidPath)
+}
+
+// WaitForExit polls until the daemon process has exited or the timeout is reached.
+// This is useful after calling Stop to ensure the process is fully terminated
+// before starting a new one.
+func WaitForExit(globalDir string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		running, _, _ := Status(globalDir)
+		if !running {
+			return nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return fmt.Errorf("daemon process did not exit within %s", timeout)
 }
 
 // GetLogPath returns the path to the daemon log file.
