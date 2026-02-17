@@ -145,7 +145,7 @@ check_prerequisites() {
     log_success "Required tools available (curl, jq, go)"
 
     # Check Go version
-    GO_VERSION=$(go version | grep -oP '\d+\.\d+' | head -1)
+    GO_VERSION=$(go version | grep -oE '[0-9]+\.[0-9]+' | head -1)
     log_info "Go version: $GO_VERSION"
 
     if [[ "$USE_GCS" == "true" ]]; then
@@ -256,7 +256,8 @@ start_server() {
 #   - Optional harness-configs/ directory for template-specific overrides
 #   - Portable home/ directory (no harness-specific files)
 create_test_template() {
-    log_section "Creating Test Template Files"
+    # Log to stderr so stdout only contains the returned path
+    log_section "Creating Test Template Files" >&2
 
     local template_dir="$TEST_DIR/templates/test-integration"
     mkdir -p "$template_dir/home/.config/lint-rules"
@@ -330,7 +331,7 @@ EOF
 model: sonnet
 EOF
 
-    log_success "Test template created at $template_dir"
+    log_success "Test template created at $template_dir" >&2
     echo "$template_dir"
 }
 
@@ -346,7 +347,7 @@ test_phase1_hub_api() {
     # Test 1.1: List templates (should be empty initially or have defaults)
     log_info "Test 1.1: List templates..."
     local list_response=$(curl -s "$base_url/api/v1/templates" -H "$AUTH")
-    if echo "$list_response" | jq -e '.templates' > /dev/null 2>&1; then
+    if echo "$list_response" | jq -e 'has("templates")' > /dev/null 2>&1; then
         log_success "List templates API working"
     else
         log_error "List templates failed: $list_response"
@@ -362,6 +363,7 @@ test_phase1_hub_api() {
             "name": "phase1-test-template",
             "scope": "global",
             "description": "Phase 1 integration test template",
+            "harness": "claude",
             "default_harness_config": "claude"
         }')
 
@@ -436,6 +438,7 @@ test_phase2_upload_flow() {
             "name": "phase2-upload-test",
             "scope": "global",
             "description": "Phase 2 upload flow test",
+            "harness": "claude",
             "default_harness_config": "claude",
             "files": [
                 {"path": "scion-agent.yaml", "size": 300},
@@ -683,56 +686,67 @@ test_phase3_cache_unit() {
 test_cli_commands() {
     log_section "CLI Commands Integration Test"
 
-    local template_dir=$(create_test_template)
+    local template_dir
+    template_dir=$(create_test_template)
     local grove_dir="$TEST_DIR/test-grove"
+    local template_name="cli-test-template"
+    local grove_template_dir="$grove_dir/.scion/templates/$template_name"
+    local hub_url="http://localhost:$HUB_PORT"
 
-    # Create a test grove
-    mkdir -p "$grove_dir/.scion"
+    # Create a test grove and copy template into its templates directory
+    # (CLI resolves templates by name from grove or global template dirs)
+    mkdir -p "$grove_dir/.scion/templates"
+    cp -r "$template_dir" "$grove_template_dir"
     cd "$grove_dir"
 
     log_info "Setting up test grove at $grove_dir..."
 
     # Enable Hub for the test grove
-    export SCION_HUB_ENDPOINT="http://localhost:$HUB_PORT"
+    log_info "Enabling Hub integration for test grove..."
+    if $TEST_DIR/scion hub enable --hub "$hub_url" 2>&1; then
+        log_success "Hub enabled for test grove"
+    else
+        log_warning "Hub enable may have issues - CLI tests may fail"
+    fi
 
-    # Test CLI.1: template sync (no --harness flag; template is harness-agnostic)
+    # Test CLI.1: template sync (uploads local template to Hub by name)
     log_info "Test CLI.1: scion template sync..."
-    if $TEST_DIR/scion template sync cli-test-template \
-        --from "$template_dir" \
-        --scope global 2>&1; then
+    if $TEST_DIR/scion template sync "$template_name" \
+        --hub "$hub_url" 2>&1; then
         log_success "template sync command succeeded"
     else
-        log_warning "template sync may have issues (Hub mode not fully configured for CLI)"
+        log_warning "template sync may have issues (harness detection may fail with agnostic format)"
     fi
 
     # Test CLI.2: template list
     log_info "Test CLI.2: scion template list..."
-    if $TEST_DIR/scion template list 2>&1; then
+    if $TEST_DIR/scion template list --hub "$hub_url" 2>&1; then
         log_success "template list command succeeded"
     else
         log_warning "template list may have issues"
     fi
 
-    # Test CLI.3: Modify template and push changes
+    # Test CLI.3: Modify template locally and push changes
     log_info "Test CLI.3: scion template push (after modification)..."
-    echo "" >> "$template_dir/agents.md"
-    echo "## Updated" >> "$template_dir/agents.md"
-    echo "- Added by integration test push verification" >> "$template_dir/agents.md"
+    echo "" >> "$grove_template_dir/agents.md"
+    echo "## Updated" >> "$grove_template_dir/agents.md"
+    echo "- Added by integration test push verification" >> "$grove_template_dir/agents.md"
 
-    if $TEST_DIR/scion template push cli-test-template \
-        --from "$template_dir" 2>&1; then
+    if $TEST_DIR/scion template push "$template_name" \
+        --hub "$hub_url" 2>&1; then
         log_success "template push command succeeded"
     else
         log_warning "template push may have issues"
     fi
 
-    # Test CLI.4: Pull template to a new location
+    # Test CLI.4: Pull template from Hub to a new location
     log_info "Test CLI.4: scion template pull..."
     local pull_dir="$TEST_DIR/pulled-template"
     rm -rf "$pull_dir"
 
-    if $TEST_DIR/scion template pull cli-test-template \
-        --to "$pull_dir" 2>&1; then
+    if $TEST_DIR/scion template pull "$template_name" \
+        --to "$pull_dir" \
+        --hub "$hub_url" 2>&1; then
         log_success "template pull command succeeded"
     else
         log_warning "template pull may have issues"
@@ -743,9 +757,11 @@ test_cli_commands() {
     if [[ -d "$pull_dir" ]]; then
         local compare_success=true
 
+        # Compare against the grove template dir (which has the pushed modifications)
+
         # Verify scion-agent.yaml
         if [[ -f "$pull_dir/scion-agent.yaml" ]]; then
-            if diff "$template_dir/scion-agent.yaml" "$pull_dir/scion-agent.yaml" > /dev/null 2>&1; then
+            if diff "$grove_template_dir/scion-agent.yaml" "$pull_dir/scion-agent.yaml" > /dev/null 2>&1; then
                 log_success "  scion-agent.yaml matches"
             else
                 log_error "  scion-agent.yaml MISMATCH"
@@ -758,7 +774,7 @@ test_cli_commands() {
 
         # Verify agents.md (should include the pushed modifications)
         if [[ -f "$pull_dir/agents.md" ]]; then
-            if diff "$template_dir/agents.md" "$pull_dir/agents.md" > /dev/null 2>&1; then
+            if diff "$grove_template_dir/agents.md" "$pull_dir/agents.md" > /dev/null 2>&1; then
                 log_success "  agents.md matches (includes pushed changes)"
             else
                 log_error "  agents.md MISMATCH"
@@ -771,7 +787,7 @@ test_cli_commands() {
 
         # Verify system-prompt.md
         if [[ -f "$pull_dir/system-prompt.md" ]]; then
-            if diff "$template_dir/system-prompt.md" "$pull_dir/system-prompt.md" > /dev/null 2>&1; then
+            if diff "$grove_template_dir/system-prompt.md" "$pull_dir/system-prompt.md" > /dev/null 2>&1; then
                 log_success "  system-prompt.md matches"
             else
                 log_error "  system-prompt.md MISMATCH"
@@ -784,7 +800,7 @@ test_cli_commands() {
 
         # Verify home/.bashrc
         if [[ -f "$pull_dir/home/.bashrc" ]]; then
-            if diff "$template_dir/home/.bashrc" "$pull_dir/home/.bashrc" > /dev/null 2>&1; then
+            if diff "$grove_template_dir/home/.bashrc" "$pull_dir/home/.bashrc" > /dev/null 2>&1; then
                 log_success "  home/.bashrc matches"
             else
                 log_error "  home/.bashrc MISMATCH"
@@ -797,7 +813,7 @@ test_cli_commands() {
 
         # Verify harness-configs override
         if [[ -f "$pull_dir/harness-configs/claude/config.yaml" ]]; then
-            if diff "$template_dir/harness-configs/claude/config.yaml" "$pull_dir/harness-configs/claude/config.yaml" > /dev/null 2>&1; then
+            if diff "$grove_template_dir/harness-configs/claude/config.yaml" "$pull_dir/harness-configs/claude/config.yaml" > /dev/null 2>&1; then
                 log_success "  harness-configs/claude/config.yaml matches"
             else
                 log_error "  harness-configs/claude/config.yaml MISMATCH"
