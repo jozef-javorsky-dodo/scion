@@ -362,9 +362,11 @@ export class ScionPageTerminal extends LitElement {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${window.location.host}/api/agents/${this.agentId}/pty?cols=${this.terminal.cols}&rows=${this.terminal.rows}`;
 
+    console.debug('[Terminal] Connecting to', url);
     this.socket = new WebSocket(url);
 
     this.socket.onopen = () => {
+      console.debug('[Terminal] WebSocket connected');
       this.connected = true;
       this.error = null;
       this.terminal?.focus();
@@ -372,24 +374,31 @@ export class ScionPageTerminal extends LitElement {
 
     this.socket.onmessage = (event: MessageEvent) => {
       try {
-        const msg = JSON.parse(event.data as string) as PTYMessage;
+        const raw = event.data;
+        if (typeof raw !== 'string') {
+          console.warn('[Terminal] Received non-string message frame (binary/Blob), type:', typeof raw, raw);
+          return;
+        }
+        const msg = JSON.parse(raw) as PTYMessage;
         if (msg.type === 'data') {
           const bytes = Uint8Array.from(atob(msg.data), (c) => c.charCodeAt(0));
           this.terminal?.write(bytes);
         }
-      } catch {
-        // Ignore malformed messages
+      } catch (err) {
+        console.warn('[Terminal] Failed to parse WebSocket message:', err, event.data);
       }
     };
 
     this.socket.onclose = (event: CloseEvent) => {
+      console.debug('[Terminal] WebSocket closed, code:', event.code, 'reason:', event.reason);
       this.connected = false;
       if (event.code !== 1000) {
         this.error = `Connection closed (code: ${event.code})`;
       }
     };
 
-    this.socket.onerror = () => {
+    this.socket.onerror = (event) => {
+      console.error('[Terminal] WebSocket error:', event);
       this.connected = false;
       this.error = 'WebSocket connection error';
     };

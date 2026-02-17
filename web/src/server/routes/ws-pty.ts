@@ -169,17 +169,17 @@ export function setupWebSocketProxy(server: HttpServer, config: AppConfig): void
       wss.handleUpgrade(req, socket, head, (clientWs) => {
         wss.emit('connection', clientWs, req);
 
-        // Pipe: client -> upstream
-        clientWs.on('message', (data: Buffer | string) => {
+        // Pipe: client -> upstream (preserve text/binary frame type)
+        clientWs.on('message', (data: Buffer, isBinary: boolean) => {
           if (upstream.readyState === WebSocket.OPEN) {
-            upstream.send(data);
+            upstream.send(data, { binary: isBinary });
           }
         });
 
-        // Pipe: upstream -> client
-        upstream.on('message', (data: Buffer | string) => {
+        // Pipe: upstream -> client (preserve text/binary frame type)
+        upstream.on('message', (data: Buffer, isBinary: boolean) => {
           if (clientWs.readyState === WebSocket.OPEN) {
-            clientWs.send(data);
+            clientWs.send(data, { binary: isBinary });
           }
         });
 
