@@ -41,6 +41,7 @@ A **Template** is a blueprint for creating an agent. It defines the base configu
 The **Runtime** is the infrastructure layer responsible for executing the agent containers.
 - Scion abstracts the container execution, allowing it to support different backends.
 - **Docker**: The standard runtime for Linux and macOS.
+- **Podman**: A daemonless, rootless alternative to Docker for Linux and macOS.
 - **Apple Container**: Uses the native Virtualization Framework on macOS for improved performance.
 - **Kubernetes**: (Experimental) Allows running agents as Pods in a Kubernetes cluster, enabling remote execution and scaling.
 

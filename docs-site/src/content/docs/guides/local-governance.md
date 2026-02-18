@@ -43,6 +43,10 @@ runtimes:
   docker:
     type: docker
     host: "unix:///var/run/docker.sock"
+
+  # Daemonless/Rootless
+  podman:
+    type: podman
     
   # Apple Silicon only
   container:

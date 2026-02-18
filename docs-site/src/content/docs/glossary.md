@@ -21,7 +21,7 @@ The centralized control plane in a hosted Scion deployment. It manages identity,
 A set of configuration overrides that define how a runtime should execute an agent (e.g., resource limits, environment variables).
 
 ### Runtime
-The underlying technology used to execute agent containers (e.g., Docker, Apple Virtualization, Kubernetes).
+The underlying technology used to execute agent containers (e.g., Docker, Podman, Apple Virtualization, Kubernetes).
 
 ### Runtime Broker
 A compute node that executes agents. It connects to a Hub to receive instructions and reports agent status.

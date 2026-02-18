@@ -60,7 +60,7 @@ If you are running an agent on a remote machine (or a shared server accessible t
 
 The `apple-container` runtime (using Apple's Virtualization Framework) **requires** tmux to support interactive attachment.
 
-Unlike Docker, the Apple container runtime does not support standard stream attachment to a running process's PID 1. Scion works around this by executing a `tmux attach` command inside the container. If you are using the `container` runtime on macOS, you **must** set `tmux: true`.
+Unlike Docker and Podman, the Apple container runtime does not support standard stream attachment to a running process's PID 1. Scion works around this by executing a `tmux attach` command inside the container. If you are using the `container` runtime on macOS, you **must** set `tmux: true`.
 
 ## Known Issues
 

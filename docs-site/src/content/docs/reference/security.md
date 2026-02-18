@@ -91,7 +91,7 @@ For headless environments (CI/CD, automation), Scion supports **API Keys**.
 ### 4.2 Credentials Propagation
 
 Scion ensures that sensitive credentials (GCP Service Accounts, API keys for LLMs) are propagated into agent containers securely.
-- **Docker**: Injected via environment variables or read-only volume mounts.
+- **Docker / Podman**: Injected via environment variables or read-only volume mounts.
 - **Kubernetes**: Propagated via Kubernetes Secrets or Secret Manager CSI drivers (e.g., GCP Secret Manager).
 - **Isolation**: Agent home directories are isolated on the host filesystem to prevent cross-agent credential leakage.
 

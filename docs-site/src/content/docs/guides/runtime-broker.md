@@ -25,7 +25,7 @@ A Runtime Broker typically runs as a background daemon on a compute node (e.g., 
 direction: right
 User -> Hub: "Start Agent"
 Hub -> Broker: "CreateAgent (via WS Tunnel)"
-Broker -> Docker/K8s: "Run Container"
+Broker -> Docker/Podman/K8s: "Run Container"
 Broker -> Storage: "Fetch Template"
 Agent -> Hub: "Status: RUNNING"
 ```

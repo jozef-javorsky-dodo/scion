@@ -101,7 +101,7 @@ The Hub stores agent templates and other artifacts.
 
 ## Deployment
 
-### Docker
+### Docker / Podman
 The Hub is available as a Docker image.
 
 ```bash
@@ -110,6 +110,8 @@ docker run -p 9810:9810 \
   -v ~/.scion:/root/.scion \
   ghcr.io/ptone/scion-hub:latest
 ```
+
+(Or use `podman run` with the same arguments).
 
 ### Cloud Run (GCP)
 The Hub is designed to be stateless and is highly compatible with Google Cloud Run. 

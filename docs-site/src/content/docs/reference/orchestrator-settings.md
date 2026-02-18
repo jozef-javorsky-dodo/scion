@@ -84,6 +84,10 @@ runtimes:
   docker:
     type: docker
     host: "unix:///var/run/docker.sock"
+
+  podman:
+    type: podman
+    host: "unix:///run/user/1000/podman/podman.sock"
   
   remote-k8s:
     type: kubernetes
@@ -93,8 +97,8 @@ runtimes:
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `type` | string | The runtime type: `docker`, `container` (Apple), or `kubernetes`. |
-| `host` | string | (Docker) The Docker daemon socket or TCP address. |
+| `type` | string | The runtime type: `docker`, `podman`, `container` (Apple), or `kubernetes`. |
+| `host` | string | (Docker/Podman) The daemon socket or TCP address. Optional for Podman (defaults to CLI). |
 | `context` | string | (Kubernetes) The kubectl context name. |
 | `namespace` | string | (Kubernetes) The target namespace. |
 | `tmux` | bool | Whether to wrap agent processes in a tmux session. |
