@@ -434,13 +434,21 @@ When NATS is enabled but disconnected, `/readyz` continues to return 200 (NATS i
 
 ## Runtime Broker Agent Status Updates
 
-When a Runtime Broker reports an agent status change via `PUT /api/v1/agents/{id}/status`, the Hub's `updateAgentStatus()` handler writes to the database and then calls `s.events.PublishAgentStatus()`. This is the primary real-time update path:
+When a Runtime Broker reports an agent status change via `PUT /api/v1/agents/{id}/status`, the Hub's `updateAgentStatus()` handler writes to the database and then calls `s.events.PublishAgentStatus()`. This is the primary real-time update path.
+
+**Consolidated architecture (in-process):**
 
 ```
-Runtime Broker → Hub API (updateAgentStatus) → Database → NATS → Web SSE → Browser
+Runtime Broker → Hub API (updateAgentStatus) → Database → ChannelEventPublisher → SSE → Browser
 ```
 
-The broker does not publish to NATS directly. All NATS publishing is centralized in the Hub.
+**NATS architecture (multi-node):**
+
+```
+Runtime Broker → Hub API (updateAgentStatus) → Database → NATSEventPublisher → NATS → Web BFF SSE → Browser
+```
+
+In both cases, the broker does not publish events directly. All event publishing is centralized in the Hub. The `EventPublisher` interface abstracts the delivery mechanism.
 
 ---
 
@@ -522,8 +530,15 @@ scion agent start --name test-agent
 
 ## Dependencies
 
-- `github.com/nats-io/nats.go` — Go NATS client (already a transitive dependency if used elsewhere, otherwise add to `go.mod`).
-- `github.com/nats-io/nats-server/v2` — Embedded NATS server for tests only.
+### Consolidated architecture (recommended)
+
+- `github.com/gorilla/sessions` — Session cookie management for browser auth.
+- No NATS dependencies. The `ChannelEventPublisher` uses only the standard library.
+
+### NATS architecture (multi-node, if needed later)
+
+- `github.com/nats-io/nats.go` — Go NATS client. Adds 3 modules, ~5 MB to binary.
+- `github.com/nats-io/nats-server/v2` — Embedded NATS server for tests (or optional embedded mode). Adds 11 modules, ~15 MB to binary.
 
 ---
 
@@ -697,6 +712,40 @@ if natsURL != "" {
 ```
 
 The `EventPublisher` interface from the main design is unchanged. Handlers call `s.events.PublishAgentStatus(...)` without knowing which implementation is active.
+
+### Is NATS Even Needed?
+
+In the consolidated architecture, the Hub is a **single process** through which **all** state changes flow. Every agent create, status update, and delete goes through Hub handlers. The SSE endpoint lives in the same process and sees every event directly via Go channels. There is no second process to notify.
+
+This means NATS is not needed for the common deployment — and may never be needed for Scion's architecture, where the Hub is a single centralized server (not a horizontally-scaled cluster).
+
+#### When NATS Would Be Needed
+
+NATS (or any cross-process pub/sub) is only required if:
+
+1. **Multiple Hub instances** behind a load balancer — an SSE client connected to Hub A needs to see events from Hub B. Scion doesn't support this today.
+2. **Separate web frontend process** — the Koa BFF or a future alternative runs on a different machine from the Hub. The consolidated architecture eliminates this.
+3. **External event consumers** — third-party tools want to tap into the Scion event stream. Not a current requirement.
+
+None of these apply to Scion at its current stage.
+
+#### Lighter Alternatives to NATS for Multi-Node (If Ever Needed)
+
+If cross-process event delivery is needed in the future, NATS is one option but not the only one. Alternatives ranked by complexity:
+
+| Approach | Complexity | New Dependencies | Notes |
+|----------|-----------|-----------------|-------|
+| **Hub serves SSE directly** | None | None | Browser connects to Hub. No intermediary. Works if Hub is the public-facing server. |
+| **PostgreSQL `LISTEN/NOTIFY`** | Low | Postgres (if migrated from SQLite) | Built-in pub/sub in the database. Payload limit 8 KB. |
+| **Redis Pub/Sub** | Low | Redis | If Redis is already in the stack for sessions or caching. |
+| **Embedded NATS** | Medium | ~15 MB binary size | In-process NATS server. No external process. |
+| **External NATS** | Medium | NATS server process | Full flexibility. Overkill for single-Hub. |
+
+For Scion, the "Hub serves SSE directly" row is the key insight: since the Hub is the single source of truth and serves the SSE endpoint, there is no need for a pub/sub intermediary at all. The `ChannelEventPublisher` (in-process Go channels) is sufficient.
+
+#### Recommendation
+
+**Start with `ChannelEventPublisher` only.** Do not add NATS as a dependency until there is a concrete multi-node requirement. The `EventPublisher` interface allows swapping in `NATSEventPublisher` later without changing any handler code. YAGNI applies here — the interface abstraction provides the escape hatch; the dependency can wait.
 
 ### SSR Decision
 
@@ -888,9 +937,10 @@ The consolidation doesn't need to happen all at once. The `EventPublisher` inter
 
 ## Non-Goals
 
-- **NATS JetStream / persistence.** The publisher uses core NATS pub/sub. Message persistence is not needed because the web frontend fetches the full state snapshot on load and SSE reconnects restart from the current state, not from a historical offset.
-- **Agent harness event relay.** Heavy events (`agent.{id}.event`) from the harness status stream are not part of this design. Those require a separate pipeline from the Runtime Broker's status monitor to NATS. This design covers Hub-originated state changes only. See Open Question 2 below.
-- **NATS as a message bus for inter-service communication.** NATS is used strictly for fan-out notifications to the web frontend. The Hub-to-Broker communication continues to use the existing HTTP/WebSocket control channel.
+- **NATS as a required dependency.** Under the consolidated architecture (recommended), NATS is not needed. The `ChannelEventPublisher` delivers events in-process via Go channels. NATS support is retained as an optional `NATSEventPublisher` behind the same interface, available if multi-node requirements emerge.
+- **NATS JetStream / persistence.** The publisher uses fire-and-forget delivery. Message persistence is not needed because the web frontend fetches the full state snapshot on page load and SSE reconnects restart from the current state, not from a historical offset.
+- **Agent harness event relay.** Heavy events (`agent.{id}.event`) from the harness status stream are not part of this design. Under the consolidated architecture, these can flow in-process from a co-located broker's status monitor to the `ChannelEventPublisher`. For remote brokers, they would flow through the existing WebSocket control channel to the Hub, then to subscribers. See Open Question 2 below.
+- **NATS as a message bus for inter-service communication.** The Hub-to-Broker communication continues to use the existing HTTP/WebSocket control channel. The event publisher is strictly for fan-out notifications to browser clients.
 
 ---
 
