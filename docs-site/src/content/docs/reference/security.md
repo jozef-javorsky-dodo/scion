@@ -81,19 +81,69 @@ A comprehensive, hierarchical RBAC (Role-Based Access Control) system is current
 
 ## 4. Secret Management
 
-### 4.1 API Keys
+Scion provides a typed, scope-aware secret management system. Secret values are never stored in plaintext in the Hub database. For a user-facing guide, see [Secret Management](/guides/secrets).
+
+### 4.1 Secrets Backend Architecture
+
+The Hub uses a pluggable **SecretBackend** interface for secret storage:
+
+| Backend | Value Storage | Write Operations | Read Operations |
+|---------|--------------|-----------------|-----------------|
+| **`gcpsm`** (GCP Secret Manager) | Encrypted in GCP SM | Supported | Supported |
+| **`local`** (default) | N/A | **Rejected** (returns 501) | Read-only (existing data) |
+
+When `gcpsm` is configured, a hybrid model is used:
+- **Metadata** (name, type, scope, version) is stored in the Hub database.
+- **Secret values** are stored in GCP Secret Manager with automatic versioning.
+- GCP SM secret names follow the pattern: `scion-{scope}-{sha256(scopeID)[:12]}-{name}`.
+
+The `local` backend rejects all write operations to prevent plaintext secret storage. It supports read and delete operations only for migration of pre-existing data.
+
+### 4.2 Secret Scopes and Resolution
+
+Secrets are scoped and resolved hierarchically when an agent starts:
+
+1. **User scope** (lowest priority): Personal secrets for the agent's owner.
+2. **Grove scope**: Project-level secrets.
+3. **Runtime Broker scope** (highest priority): Infrastructure-level overrides.
+
+Higher-priority scopes override lower ones by key name, producing a merged set of secrets for each agent.
+
+### 4.3 Secret Types and Projection
+
+Secrets are typed to control how they reach the agent container:
+
+- **`environment`**: Injected as environment variables (default).
+- **`variable`**: Written to `~/.scion/secrets.json` inside the container.
+- **`file`**: Written to a specified filesystem path (max 64 KiB).
+
+### 4.4 API Keys
 
 For headless environments (CI/CD, automation), Scion supports **API Keys**.
 - Keys are prefixed with `sk_live_` or `sk_test_`.
-- Only the hash of the key is stored in the database.
+- Only the SHA-256 hash of the key is stored in the database; the original value is never persisted.
 - Keys can be scoped to specific permissions and revoked instantly via the dashboard.
 
-### 4.2 Credentials Propagation
+### 4.5 Credentials Propagation
 
 Scion ensures that sensitive credentials (GCP Service Accounts, API keys for LLMs) are propagated into agent containers securely.
-- **Docker / Podman**: Injected via environment variables or read-only volume mounts.
+- **Docker / Podman**: Injected via environment variables or read-only volume mounts. Secrets are transmitted over the TLS-secured control channel between Hub and Broker.
 - **Kubernetes**: Propagated via Kubernetes Secrets or Secret Manager CSI drivers (e.g., GCP Secret Manager).
 - **Isolation**: Agent home directories are isolated on the host filesystem to prevent cross-agent credential leakage.
+- **Lifecycle**: Secrets exist only in the agent container's memory. When an agent is deleted, all projected secrets are purged.
+
+### 4.6 Hub-Internal Keys
+
+JWT signing keys used for agent and user token issuance are stored through the secret backend when GCP Secret Manager is configured. In development mode (local backend), signing keys fall back to direct database storage with a logged warning. These keys use the internal `hub` scope and are not accessible through the user-facing secrets API.
+
+### 4.7 Broker Authentication Secrets
+
+The following broker-related secrets are stored in the Hub database and are not managed through the secrets backend:
+
+- **Join tokens**: SHA-256 hashed before storage; single-use with 1-hour expiry.
+- **Shared secrets**: Stored as binary BLOBs in the `broker_secrets` table; used for HMAC-SHA256 request signing.
+
+These are infrastructure-level secrets established during broker registration and are managed by the broker authentication subsystem rather than the user-facing secrets API.
 
 ## 5. Development Security
 

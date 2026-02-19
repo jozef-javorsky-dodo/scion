@@ -124,10 +124,12 @@ The Hub enforces a "Provider" model for authorization. Even if a broker is authe
 ### Secret Management
 
 Brokers never store agent secrets (like API keys) on disk.
-1. The Hub retrieves secrets from its encrypted store.
-2. The Hub includes the resolved secrets in the `CreateAgent` command sent to the Broker.
-3. The Broker injects these secrets directly into the agent container's memory.
+1. The Hub resolves secrets from all applicable scopes (user, grove, broker) via the configured secrets backend (e.g., GCP Secret Manager).
+2. The Hub includes the resolved secrets in the `CreateAgent` command sent to the Broker over the TLS-secured control channel.
+3. The Broker projects secrets into the agent container based on their type (environment variable, JSON file, or filesystem path).
 4. When the agent is deleted, the secrets are purged from the host.
+
+For details on configuring and managing secrets, see [Secret Management](/guides/secrets).
 
 ## CLI Authentication
 

@@ -124,12 +124,17 @@ Backend for storing templates and artifacts.
 
 ### Secrets (`server.secrets`)
 
-Backend for managing encrypted secrets.
+Backend for managing encrypted secrets. The `local` backend is read-only and rejects secret write operations. Configure `gcpsm` to enable full secret management.
 
 | Field | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `backend` | string | `"local"` | Secrets backend: `local` or `gcp`. |
-| `gcp_project_id` | string | | GCP Project ID for Secret Manager. |
+| `backend` | string | `"local"` | Secrets backend: `local` or `gcpsm`. The `local` backend rejects writes; use `gcpsm` for production. |
+| `gcp_project_id` | string | | GCP Project ID for Secret Manager. Required when `backend` is `gcpsm`. |
+| `gcp_credentials` | string | | Path to GCP service account JSON or the JSON content itself. Optional if using Application Default Credentials. |
+
+:::caution
+The `local` backend does not store secret values. Any attempt to create or update secrets will fail with a 501 error. Configure `gcpsm` to use the secret management features.
+:::
 
 ## Environment Variables
 
@@ -140,3 +145,6 @@ All server settings can be overridden via environment variables using the `SCION
 - `server.broker.enabled` -> `SCION_SERVER_BROKER_ENABLED`
 - `server.database.url` -> `SCION_SERVER_DATABASE_URL`
 - `server.auth.dev_mode` -> `SCION_SERVER_AUTH_DEVMODE`
+- `server.secrets.backend` -> `SCION_SERVER_SECRETS_BACKEND`
+- `server.secrets.gcp_project_id` -> `SCION_SERVER_SECRETS_GCP_PROJECT_ID`
+- `server.secrets.gcp_credentials` -> `SCION_SERVER_SECRETS_GCP_CREDENTIALS`
