@@ -763,17 +763,13 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		// Get hub endpoint from config or settings.
-		// Priority: cfg.RuntimeBroker.HubEndpoint > settings.Hub.Endpoint
+		// Get hub endpoint for the co-located runtime broker.
+		// When hub and web are both enabled, the Hub API is mounted on the
+		// web server's mux, so the broker MUST use webPort regardless of
+		// what settings.Hub.Endpoint says (it may contain a stale standalone port).
 		hubEndpointForRH := cfg.RuntimeBroker.HubEndpoint
-		if hubEndpointForRH == "" && settings.Hub != nil {
-			hubEndpointForRH = settings.Hub.Endpoint
-		}
-
-		// If still empty and hub is co-located, use localhost for heartbeat and hydration.
-		// When --enable-web is active, the Hub API is mounted on the web server's mux,
-		// so use webPort instead of the standalone hub port.
 		if hubEndpointForRH == "" && enableHub {
+			// Co-located hub: compute the correct local endpoint.
 			port := cfg.Hub.Port
 			if enableWeb {
 				port = webPort
@@ -782,6 +778,9 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 			if enableDebug {
 				log.Printf("Co-located Hub detected: using %s for heartbeat and template hydration", hubEndpointForRH)
 			}
+		} else if hubEndpointForRH == "" && settings.Hub != nil {
+			// Remote hub: fall back to the persisted endpoint.
+			hubEndpointForRH = settings.Hub.Endpoint
 		}
 
 		// In combined hub/broker mode, default auto-provide to true unless
