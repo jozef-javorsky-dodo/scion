@@ -23,6 +23,9 @@
 import type { PageData } from '../shared/types.js';
 import { stateManager } from './state.js';
 
+// Import Shoelace autoloader for component registration
+import '@shoelace-style/shoelace/dist/shoelace-autoloader.js';
+
 // Import all components for client-side hydration and routing
 // App shell (imports shared components internally)
 import '../components/app-shell.js';
@@ -45,6 +48,24 @@ import '../components/pages/not-found.js';
 import '../components/pages/login.js';
 
 /**
+ * Route configuration mapping URL patterns to page component tag names
+ */
+const ROUTES: { pattern: RegExp; tag: string }[] = [
+  { pattern: /^\/login$/, tag: 'scion-login-page' },
+  { pattern: /^\/$/, tag: 'scion-page-home' },
+  { pattern: /^\/groves$/, tag: 'scion-page-groves' },
+  { pattern: /^\/agents$/, tag: 'scion-page-agents' },
+  { pattern: /^\/groves\/[^/]+$/, tag: 'scion-page-grove-detail' },
+  { pattern: /^\/agents\/[^/]+\/terminal$/, tag: 'scion-page-terminal' },
+  { pattern: /^\/agents\/[^/]+$/, tag: 'scion-page-agent-detail' },
+];
+
+/**
+ * Routes that render without the app shell (full-page layout)
+ */
+const STANDALONE_ROUTES = new Set(['scion-login-page']);
+
+/**
  * Initialize the client-side application
  */
 async function init(): Promise<void> {
@@ -55,7 +76,12 @@ async function init(): Promise<void> {
   if (initialData) {
     console.info('[Scion] Initial page data:', initialData.path);
     if (initialData.data) {
-      stateManager.hydrate(initialData.data as { agents?: import('../shared/types.js').Agent[]; groves?: import('../shared/types.js').Grove[] });
+      stateManager.hydrate(
+        initialData.data as {
+          agents?: import('../shared/types.js').Agent[];
+          groves?: import('../shared/types.js').Grove[];
+        }
+      );
     }
   }
 
@@ -80,6 +106,9 @@ async function init(): Promise<void> {
   ]);
 
   console.info('[Scion] Components defined, setting up router...');
+
+  // Render the initial page based on current URL
+  renderRoute(window.location.pathname);
 
   // Setup client-side router for navigation
   setupRouter();
@@ -111,20 +140,47 @@ function getInitialData(): PageData | null {
 }
 
 /**
- * Sets up the Vaadin Router for client-side navigation
+ * Resolves a URL path to a page component tag name
+ */
+function resolveRoute(path: string): string {
+  for (const route of ROUTES) {
+    if (route.pattern.test(path)) {
+      return route.tag;
+    }
+  }
+  return 'scion-page-404';
+}
+
+/**
+ * Renders the page component for the given path into #app
+ */
+function renderRoute(path: string): void {
+  const appContainer = document.getElementById('app');
+  if (!appContainer) return;
+
+  const tag = resolveRoute(path);
+
+  // Clear previous content
+  appContainer.innerHTML = '';
+
+  if (STANDALONE_ROUTES.has(tag)) {
+    // Standalone pages render without the app shell
+    const page = document.createElement(tag);
+    appContainer.appendChild(page);
+  } else {
+    // Wrapped pages render inside the app shell
+    const shell = document.createElement('scion-app') as HTMLElement & { currentPath: string };
+    shell.currentPath = path;
+    const page = document.createElement(tag);
+    shell.appendChild(page);
+    appContainer.appendChild(shell);
+  }
+}
+
+/**
+ * Sets up the client-side router for navigation
  */
 function setupRouter(): void {
-  // Find the content outlet within the app shell
-  const appShell = document.querySelector('scion-app');
-  if (!appShell) {
-    // Not using app shell on this page (e.g. terminal or login)
-    return;
-  }
-
-  // The router outlet is the content slot in the app shell
-  // For now, we handle navigation by updating the app shell's currentPath
-  // and letting the server re-render on full navigation
-
   // Add click handlers for client-side navigation
   document.addEventListener('click', (e: MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -154,7 +210,7 @@ function setupRouter(): void {
 
   // Handle browser back/forward
   window.addEventListener('popstate', () => {
-    updateCurrentPath(window.location.pathname);
+    renderRoute(window.location.pathname);
   });
 }
 
@@ -165,23 +221,7 @@ function navigateTo(path: string): void {
   if (path === window.location.pathname) return;
 
   window.history.pushState({}, '', path);
-  updateCurrentPath(path);
-
-  // For now, do a full page load to get SSR content
-  // In the future, we could fetch just the page content via AJAX
-  window.location.href = path;
-}
-
-/**
- * Updates the app shell's current path
- */
-function updateCurrentPath(path: string): void {
-  const appShell = document.querySelector('scion-app') as HTMLElement & {
-    currentPath?: string;
-  };
-  if (appShell) {
-    appShell.currentPath = path;
-  }
+  renderRoute(path);
 }
 
 // Initialize when DOM is ready

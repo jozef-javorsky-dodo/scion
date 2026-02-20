@@ -14,18 +14,43 @@
  * limitations under the License.
  */
 
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { resolve } from 'path';
+
+/**
+ * Vite plugin that returns empty JSON arrays for /api/* routes
+ * when running without the Go backend. This lets page components
+ * render their empty states instead of JSON parse errors.
+ */
+function mockApiPlugin(): Plugin {
+    return {
+        name: 'mock-api',
+        configureServer(server) {
+            server.middlewares.use((req, res, next) => {
+                if (req.url?.startsWith('/api/')) {
+                    res.setHeader('Content-Type', 'application/json');
+                    res.statusCode = 200;
+                    res.end('[]');
+                    return;
+                }
+                next();
+            });
+        },
+    };
+}
 
 export default defineConfig({
     root: '.',
     publicDir: 'public',
+    // SPA mode: serve index.html for all unmatched routes (history API fallback)
+    appType: 'spa',
+    plugins: [mockApiPlugin()],
     build: {
         outDir: 'dist/client',
         emptyOutDir: true,
         rollupOptions: {
             input: {
-                main: resolve(__dirname, 'src/client/main.ts'),
+                main: resolve(__dirname, 'index.html'),
             },
             output: {
                 // Use consistent naming for SSR compatibility
