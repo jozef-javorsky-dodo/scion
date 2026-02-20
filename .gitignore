@@ -1,6 +1,7 @@
 # scion ignore
 .scion/
 # binaries
+/build/
 /scion
 scion-agent
 
