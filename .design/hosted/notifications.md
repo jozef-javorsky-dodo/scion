@@ -750,23 +750,23 @@ Future work may add `scion get-notified <agent>` to allow additional actors to s
 5. ~~Wire dispatcher into Hub server startup/shutdown.~~
 6. ~~Add unit tests for event matching, storage, dispatch, and deduplication.~~
 
-### Phase 3: CLI and API Integration
-7. Add `--notify` boolean flag to `cmd/start.go`.
-8. Add `Notify` field to `CreateAgentRequest` in `pkg/hubclient/agents.go`.
-9. Update `createAgent` handler to create subscriptions from request using JWT identity.
-10. Add `ScopeAgentNotify` scope and auto-grant alongside creation scopes.
-11. Error messaging for local-mode `--notify` usage.
+### Phase 3: CLI and API Integration ✓
+7. ~~Add `--notify` boolean flag to `cmd/start.go`.~~
+8. ~~Add `Notify` field to `CreateAgentRequest` in `pkg/hubclient/agents.go`.~~
+9. ~~Update `createAgent` handler to create subscriptions from request using JWT identity.~~
+10. ~~Add `ScopeAgentNotify` scope and auto-grant alongside creation scopes.~~
+11. ~~Error messaging for local-mode `--notify` usage.~~
 
-### Phase 4: Human Notification CLI
-12. Add `scion hub notifications` command to list unacknowledged notifications.
-13. Add `scion hub notifications ack <id>` and `scion hub notifications ack --all` commands.
-14. Add Hub API endpoints for notification retrieval and acknowledgment.
+### Phase 4: Human Notification CLI ✓
+12. ~~Add `scion hub notifications` command to list unacknowledged notifications.~~
+13. ~~Add `scion hub notifications ack <id>` and `scion hub notifications ack --all` commands.~~
+14. ~~Add Hub API endpoints for notification retrieval and acknowledgment.~~
 
-### Phase 5: Testing and Polish
-15. Integration tests: agent-creates-agent-with-notify flow.
-16. Status normalization edge cases.
-17. Subscription cleanup on agent deletion verification.
-18. Human notification CLI end-to-end tests.
+### Phase 5: Testing and Polish ✓
+15. ~~Integration tests: agent-creates-agent-with-notify flow.~~
+16. ~~Status normalization edge cases.~~
+17. ~~Subscription cleanup on agent deletion verification.~~
+18. ~~Human notification CLI end-to-end tests.~~
 
 ### Future Phases
 - REST API for subscription management (`GET/POST/DELETE /subscriptions`).
