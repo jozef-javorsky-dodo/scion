@@ -1344,6 +1344,12 @@ func (s *Server) finalizeEnv(w http.ResponseWriter, r *http.Request, id string) 
 		opts.Profile = origReq.Config.Profile
 	}
 
+	// Save template slug before hydration may replace opts.Template with a cache path
+	templateSlug := ""
+	if origReq.Config != nil {
+		templateSlug = origReq.Config.Template
+	}
+
 	// Hydrate template if needed
 	hydrator := s.resolveHydrator(r)
 	if hydrator != nil && origReq.Config != nil {
@@ -1355,6 +1361,11 @@ func (s *Server) finalizeEnv(w http.ResponseWriter, r *http.Request, id string) 
 		if templatePath != "" {
 			opts.Template = templatePath
 		}
+	}
+
+	// Preserve human-friendly template slug for container labels
+	if templateSlug != "" {
+		opts.TemplateName = templateSlug
 	}
 
 	// Git clone mode

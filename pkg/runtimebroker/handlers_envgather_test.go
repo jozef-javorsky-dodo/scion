@@ -288,6 +288,12 @@ profiles:
 	if mgr.lastEnv["NEEDED_KEY"] != "gathered-value" {
 		t.Errorf("expected NEEDED_KEY='gathered-value', got %q", mgr.lastEnv["NEEDED_KEY"])
 	}
+
+	// Verify template slug was preserved through finalize-env (regression test:
+	// without this, container image resolution fails with "no container image resolved")
+	if mgr.lastTemplateName != "claude" {
+		t.Errorf("expected TemplateName='claude', got %q", mgr.lastTemplateName)
+	}
 }
 
 // newTestServerWithHarnessConfig creates a test server with a temporary grove path
