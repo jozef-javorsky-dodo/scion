@@ -29,6 +29,8 @@ Previous versions of Scion used `scion-agent.json`. The new versioned settings s
 | `volumes` | list | Additional volume mounts. |
 | `detached` | bool | Run in background (default `true`). |
 | `command_args` | list | Additional arguments passed to the harness entrypoint. |
+| `task_flag` | string | CLI flag name for passing the task (e.g., `--input`). When set, the task is delivered as a flag value instead of a positional argument. |
+| `model` | string | LLM model identifier override. |
 
 :::caution[Harness Field Deprecated]
 The `harness` field is no longer supported in `scion-agent.yaml`. Templates must be harness-agnostic. Use `default_harness_config` to specify a preferred harness, which can be overridden by users at runtime.

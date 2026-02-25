@@ -211,6 +211,10 @@
           "type": "string",
           "description": "LLM model identifier."
         },
+        "task_flag": {
+          "type": "string",
+          "description": "CLI flag name for passing the task to the harness (e.g., '--input'). When set, the task is delivered as a flag value instead of a positional argument."
+        },
         "args": {
           "type": "array",
           "items": { "type": "string" },
