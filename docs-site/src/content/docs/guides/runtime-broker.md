@@ -87,6 +87,7 @@ The Runtime Broker is configured in `settings.yaml` under the `server` section, 
 |---------|---------|-------------|
 | `server.broker.port` | `SCION_SERVER_BROKER_PORT` | Port for the Broker API (default: 9800). |
 | `server.broker.hub_endpoint` | `SCION_SERVER_BROKER_HUB_ENDPOINT` | URL of the Scion Hub. |
+| `server.broker.container_hub_endpoint` | `SCION_SERVER_BROKER_CONTAINERHUBENDPOINT` | Overrides `hub_endpoint` for agent containers (e.g. `http://host.containers.internal:8080`). |
 | `server.broker.broker_id` | `SCION_SERVER_BROKER_BROKER_ID` | Unique ID for the broker (assigned during registration). |
 | `server.broker.auto_provide` | `SCION_SERVER_BROKER_AUTOPROVIDE` | Automatically add as provider for new groves. |
 

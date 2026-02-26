@@ -342,6 +342,12 @@
           "description": "Hub API endpoint for this broker to report status to.",
           "x-env-var": "SCION_SERVER_BROKER_HUBENDPOINT"
         },
+        "container_hub_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "Overrides hub_endpoint when injecting the Hub URL into agent containers. Use when containers cannot reach the Hub at the broker's address (e.g. http://host.containers.internal:8080 for local development).",
+          "x-env-var": "SCION_SERVER_BROKER_CONTAINERHUBENDPOINT"
+        },
         "broker_id": {
           "type": "string",
           "description": "Unique broker identifier (UUID). Auto-generated if empty.",
