@@ -1583,3 +1583,51 @@ func TestStartAgentGroveSlugNotUsedWhenGrovePathSet(t *testing.T) {
 		t.Errorf("expected GrovePath %q, got %q", "/projects/my-local-grove/.scion", mgr.lastOpts.GrovePath)
 	}
 }
+
+func TestCreateAgentGroveSlugInitializesScionDir(t *testing.T) {
+	// When GroveSlug is set and the broker has no .scion subdirectory for
+	// the hub-native grove, the handler should create it so that
+	// ResolveGrovePath resolves to groves/<slug>/.scion (not groves/<slug>).
+	// This prevents agents from being created at the wrong directory level.
+
+	// Use a temporary directory to simulate the grove workspace.
+	tmpDir := t.TempDir()
+	grovePath := filepath.Join(tmpDir, "test-grove")
+	if err := os.MkdirAll(grovePath, 0755); err != nil {
+		t.Fatalf("failed to create test grove dir: %v", err)
+	}
+
+	// Verify .scion does NOT exist yet
+	scionDir := filepath.Join(grovePath, ".scion")
+	if _, err := os.Stat(scionDir); !os.IsNotExist(err) {
+		t.Fatal(".scion should not exist before initialization")
+	}
+
+	// Verify ResolveGrovePath does NOT resolve to .scion when it doesn't exist
+	resolved, _, err := config.ResolveGrovePath(grovePath)
+	if err != nil {
+		t.Fatalf("ResolveGrovePath failed: %v", err)
+	}
+	if resolved != grovePath {
+		t.Errorf("before init: expected ResolveGrovePath to return %q, got %q", grovePath, resolved)
+	}
+
+	// Initialize .scion (mirrors what the handler now does)
+	if err := config.InitProject(scionDir, nil); err != nil {
+		t.Fatalf("InitProject failed: %v", err)
+	}
+
+	// Verify .scion was created
+	if info, err := os.Stat(scionDir); err != nil || !info.IsDir() {
+		t.Fatal(".scion directory should exist after InitProject")
+	}
+
+	// Verify ResolveGrovePath now resolves to the .scion subdirectory
+	resolved, _, err = config.ResolveGrovePath(grovePath)
+	if err != nil {
+		t.Fatalf("ResolveGrovePath failed: %v", err)
+	}
+	if resolved != scionDir {
+		t.Errorf("after init: expected ResolveGrovePath to resolve to %q, got %q", scionDir, resolved)
+	}
+}

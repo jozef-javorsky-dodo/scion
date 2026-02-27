@@ -389,6 +389,19 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.GrovePath = filepath.Join(globalDir, "groves", req.GroveSlug)
+		// Ensure the .scion project structure exists within the grove path.
+		// The Hub's initHubNativeGrove creates this on the Hub's filesystem,
+		// but on a different broker the directory may not exist yet. Without it,
+		// ResolveGrovePath won't find the .scion subdirectory and agents will
+		// be created at the wrong level (groves/<slug>/agents instead of
+		// groves/<slug>/.scion/agents).
+		scionDir := filepath.Join(req.GrovePath, ".scion")
+		if _, err := os.Stat(scionDir); os.IsNotExist(err) {
+			if err := config.InitProject(scionDir, nil); err != nil {
+				slog.Warn("Failed to initialize .scion project for hub-native grove",
+					"slug", req.GroveSlug, "path", scionDir, "error", err)
+			}
+		}
 		if s.config.Debug {
 			slog.Debug("Resolved hub-native grove path from slug",
 				"slug", req.GroveSlug,
@@ -865,6 +878,15 @@ func (s *Server) startAgent(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 		startReq.GrovePath = filepath.Join(globalDir, "groves", startReq.GroveSlug)
+		// Ensure the .scion project structure exists within the grove path.
+		// See corresponding comment in createAgent for full explanation.
+		scionDir := filepath.Join(startReq.GrovePath, ".scion")
+		if _, err := os.Stat(scionDir); os.IsNotExist(err) {
+			if err := config.InitProject(scionDir, nil); err != nil {
+				slog.Warn("Failed to initialize .scion project for hub-native grove",
+					"slug", startReq.GroveSlug, "path", scionDir, "error", err)
+			}
+		}
 		if s.config.Debug {
 			slog.Debug("Resolved hub-native grove path from slug in startAgent",
 				"slug", startReq.GroveSlug,
