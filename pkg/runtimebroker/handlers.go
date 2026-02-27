@@ -1314,14 +1314,14 @@ func (s *Server) extractRequiredEnvKeys(req CreateAgentRequest) ([]string, map[s
 
 // resolveHarnessConfigName determines which harness-config to use for the agent.
 // Resolution chain:
-//  1. req.Config.Harness (explicit harness override)
+//  1. req.Config.HarnessConfig (explicit harness config override)
 //  2. req.Config.Template (if it matches a valid harness-config directory)
 //  3. profile's DefaultHarnessConfig
 //  4. settings' DefaultHarnessConfig
 func (s *Server) resolveHarnessConfigName(req CreateAgentRequest, settings *config.VersionedSettings) string {
 	// 1. Explicit harness in config
-	if req.Config != nil && req.Config.Harness != "" {
-		return req.Config.Harness
+	if req.Config != nil && req.Config.HarnessConfig != "" {
+		return req.Config.HarnessConfig
 	}
 
 	// 2. Template name that matches an on-disk harness-config directory

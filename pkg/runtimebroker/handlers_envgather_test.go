@@ -1181,7 +1181,7 @@ profiles:
 // (fixing the hub-native grove dispatch issue where harness wasn't sent).
 func TestEnvGather_HarnessFromConfig(t *testing.T) {
 	// Create a minimal server with no grove path — simulating hub-native dispatch
-	// where GrovePath isn't available. The harness name must come from config.Harness.
+	// where GrovePath isn't available. The harness config name must come from config.HarnessConfig.
 	settings := `
 schema_version: "1"
 profiles:
@@ -1197,7 +1197,7 @@ profiles:
 		"id": "agent-uuid-hc",
 		"gatherEnv": true,
 		"grovePath": "` + groveDir + `",
-		"config": {"template": "default", "harness": "gemini", "profile": "default"}
+		"config": {"template": "default", "harnessConfig": "gemini", "profile": "default"}
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

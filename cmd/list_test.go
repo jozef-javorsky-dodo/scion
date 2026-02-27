@@ -316,17 +316,17 @@ func TestHubAgentToAgentInfo_HarnessConfigFromTopLevel(t *testing.T) {
 
 func TestHubAgentToAgentInfo_HarnessConfigFallbackToAppliedConfig(t *testing.T) {
 	// When the Hub does NOT return harnessConfig at the top level (older Hub),
-	// fall back to AppliedConfig.Harness
+	// fall back to AppliedConfig.HarnessConfig
 	a := hubclient.Agent{
 		ID:   "agent-2",
 		Name: "test-agent-2",
 		AppliedConfig: &hubclient.AgentConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 	info := hubAgentToAgentInfo(a)
 	if info.HarnessConfig != "claude" {
-		t.Errorf("HarnessConfig = %q, want %q (should fall back to AppliedConfig.Harness)", info.HarnessConfig, "claude")
+		t.Errorf("HarnessConfig = %q, want %q (should fall back to AppliedConfig.HarnessConfig)", info.HarnessConfig, "claude")
 	}
 }
 
@@ -337,7 +337,7 @@ func TestHubAgentToAgentInfo_HarnessConfigTopLevelTakesPrecedence(t *testing.T) 
 		Name:          "test-agent-3",
 		HarnessConfig: "gemini",
 		AppliedConfig: &hubclient.AgentConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 	info := hubAgentToAgentInfo(a)

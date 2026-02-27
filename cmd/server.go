@@ -1218,7 +1218,7 @@ func (d *agentDispatcherAdapter) DispatchAgentCreate(ctx context.Context, hubAge
 	}
 
 	if hubAgent.AppliedConfig != nil {
-		opts.Template = hubAgent.AppliedConfig.Harness
+		opts.HarnessConfig = hubAgent.AppliedConfig.HarnessConfig
 		// Pass the task through to the runtime broker
 		if hubAgent.AppliedConfig.Task != "" {
 			opts.Task = hubAgent.AppliedConfig.Task

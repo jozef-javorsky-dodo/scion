@@ -56,7 +56,7 @@ type Agent struct {
 	// Enriched fields (populated by Hub when returning data, not persisted)
 	Grove             string `json:"grove,omitempty"`             // Grove name (resolved from GroveID)
 	RuntimeBrokerName string `json:"runtimeBrokerName,omitempty"` // Broker name (resolved from RuntimeBrokerID)
-	HarnessConfig     string `json:"harnessConfig,omitempty"`     // Harness type (resolved from AppliedConfig.Harness)
+	HarnessConfig     string `json:"harnessConfig,omitempty"`     // Harness config name (resolved from AppliedConfig.HarnessConfig)
 
 	// Applied configuration (stored as JSON)
 	AppliedConfig *AgentAppliedConfig `json:"appliedConfig,omitempty"`
@@ -79,7 +79,7 @@ type Agent struct {
 // AgentAppliedConfig stores the effective configuration of an agent.
 type AgentAppliedConfig struct {
 	Image   string            `json:"image,omitempty"`
-	Harness string            `json:"harness,omitempty"`
+	HarnessConfig string            `json:"harnessConfig,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
 	Model   string            `json:"model,omitempty"`
 	Profile string            `json:"profile,omitempty"`   // Settings profile for the runtime broker
@@ -871,8 +871,8 @@ func (a *Agent) ToAPI() *api.AgentInfo {
 		if info.Image == "" {
 			info.Image = a.AppliedConfig.Image
 		}
-		if info.HarnessConfig == "" && a.AppliedConfig.Harness != "" {
-			info.HarnessConfig = a.AppliedConfig.Harness
+		if info.HarnessConfig == "" && a.AppliedConfig.HarnessConfig != "" {
+			info.HarnessConfig = a.AppliedConfig.HarnessConfig
 		}
 	}
 

@@ -595,7 +595,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 		req.Config = &RemoteAgentConfig{
 			Template:     agent.Template,
 			Image:        agent.AppliedConfig.Image,
-			Harness:      agent.AppliedConfig.Harness,
+			HarnessConfig:      agent.AppliedConfig.HarnessConfig,
 			Task:         agent.AppliedConfig.Task,
 			Workspace:    workspace,
 			Profile:      agent.AppliedConfig.Profile,
@@ -608,7 +608,7 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 			slog.Debug("buildCreateRequest: config sent to broker",
 				"template", agent.Template,
 				"image", agent.AppliedConfig.Image,
-				"harness", agent.AppliedConfig.Harness,
+				"harnessConfig", agent.AppliedConfig.HarnessConfig,
 				"profile", agent.AppliedConfig.Profile,
 				"templateID", agent.AppliedConfig.TemplateID,
 				"grovePath", req.GrovePath,
@@ -711,7 +711,7 @@ func (d *HTTPAgentDispatcher) applyBrokerResponse(agent *store.Agent, resp *Remo
 			agent.Template = resp.Agent.Template
 		}
 		if resp.Agent.HarnessConfig != "" && agent.AppliedConfig != nil {
-			agent.AppliedConfig.Harness = resp.Agent.HarnessConfig
+			agent.AppliedConfig.HarnessConfig = resp.Agent.HarnessConfig
 		}
 		if resp.Agent.Runtime != "" {
 			agent.Runtime = resp.Agent.Runtime
@@ -1042,7 +1042,7 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 	// Pass the agent's harness config so the broker starts with the correct harness.
 	harnessConfig := ""
 	if agent.AppliedConfig != nil {
-		harnessConfig = agent.AppliedConfig.Harness
+		harnessConfig = agent.AppliedConfig.HarnessConfig
 	}
 
 	resp, err := d.client.StartAgent(ctx, agent.RuntimeBrokerID, endpoint, agent.Name, task, grovePath, groveSlug, harnessConfig, resolvedEnv)

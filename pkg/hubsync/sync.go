@@ -575,7 +575,7 @@ func ExecuteSync(ctx context.Context, hubCtx *HubContext, result *SyncResult, au
 				req.Template = localInfo.Template
 			}
 			if localInfo.HarnessConfig != "" {
-				req.Harness = localInfo.HarnessConfig
+				req.HarnessConfig = localInfo.HarnessConfig
 			}
 		}
 

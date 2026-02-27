@@ -1133,9 +1133,9 @@ func TestAgentCreate_LocalTemplateWithLocalBroker(t *testing.T) {
 	require.NotNil(t, resp.Agent)
 	assert.Equal(t, "local-template-agent", resp.Agent.Slug)
 	assert.Equal(t, "my-local-template", resp.Agent.Template)
-	// The harness should fall back to the template name when resolvedTemplate is nil
+	// The harness config should be empty when resolvedTemplate is nil (broker resolves via DefaultHarnessConfig)
 	require.NotNil(t, resp.Agent.AppliedConfig)
-	assert.Equal(t, "my-local-template", resp.Agent.AppliedConfig.Harness)
+	assert.Empty(t, resp.Agent.AppliedConfig.HarnessConfig)
 	// TemplateID and TemplateHash should be empty since template was not resolved on Hub
 	assert.Empty(t, resp.Agent.AppliedConfig.TemplateID)
 	assert.Empty(t, resp.Agent.AppliedConfig.TemplateHash)
@@ -1691,7 +1691,7 @@ func TestCreateAgent_ProfileStoredWithConfigOverride(t *testing.T) {
 }
 
 // TestListAgents_HarnessConfigEnriched verifies that the harness type from
-// AppliedConfig.Harness is surfaced as a top-level harnessConfig field in
+// AppliedConfig.HarnessConfig is surfaced as a top-level harnessConfig field in
 // list responses so that clients can display it without parsing appliedConfig.
 func TestListAgents_HarnessConfigEnriched(t *testing.T) {
 	srv, s := testServer(t)
@@ -1711,7 +1711,7 @@ func TestListAgents_HarnessConfigEnriched(t *testing.T) {
 		GroveID: grove.ID,
 		Status:  store.AgentStatusRunning,
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "gemini",
+			HarnessConfig: "gemini",
 		},
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
@@ -1766,7 +1766,7 @@ func TestGetAgent_HarnessConfigEnriched(t *testing.T) {
 		GroveID: grove.ID,
 		Status:  store.AgentStatusRunning,
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
@@ -1792,7 +1792,7 @@ func TestCreateAgent_HarnessFromRequestField(t *testing.T) {
 	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
 		Name:    "sync-agent",
 		GroveID: grove.ID,
-		Harness: "gemini",
+		HarnessConfig: "gemini",
 	})
 	require.Equal(t, http.StatusCreated, rec.Code)
 
@@ -1803,8 +1803,8 @@ func TestCreateAgent_HarnessFromRequestField(t *testing.T) {
 	agent, err := s.GetAgent(ctx, resp.Agent.ID)
 	require.NoError(t, err)
 	require.NotNil(t, agent.AppliedConfig)
-	assert.Equal(t, "gemini", agent.AppliedConfig.Harness,
-		"AppliedConfig.Harness should be set from request Harness field")
+	assert.Equal(t, "gemini", agent.AppliedConfig.HarnessConfig,
+		"AppliedConfig.HarnessConfig should be set from request HarnessConfig field")
 
 	// Verify enrichment works for list
 	rec2 := doRequest(t, srv, http.MethodGet, "/api/v1/agents?groveId="+grove.ID, nil)
@@ -1850,7 +1850,7 @@ func TestCreateAgent_HarnessFieldIgnoredWhenTemplateResolved(t *testing.T) {
 		Name:     "tmpl-agent",
 		GroveID:  grove.ID,
 		Template: "claude-template",
-		Harness:  "gemini", // Should be ignored since template resolves
+		HarnessConfig:  "gemini", // Should be ignored since template resolves
 	})
 	require.Equal(t, http.StatusCreated, rec.Code)
 
@@ -1860,8 +1860,8 @@ func TestCreateAgent_HarnessFieldIgnoredWhenTemplateResolved(t *testing.T) {
 	agent, err := s.GetAgent(ctx, resp.Agent.ID)
 	require.NoError(t, err)
 	require.NotNil(t, agent.AppliedConfig)
-	assert.Equal(t, "claude", agent.AppliedConfig.Harness,
-		"template-resolved harness should take precedence over request Harness field")
+	assert.Equal(t, "claude", agent.AppliedConfig.HarnessConfig,
+		"template-resolved harness should take precedence over request HarnessConfig field")
 }
 
 // TestCreateAgent_HarnessNotTemplateUUID verifies that when the template is
@@ -1889,7 +1889,7 @@ func TestCreateAgent_HarnessNotTemplateUUID(t *testing.T) {
 		Name:     "uuid-tmpl-agent",
 		GroveID:  grove.ID,
 		Template: templateUUID,
-		Harness:  "gemini",
+		HarnessConfig:  "gemini",
 	})
 	require.Equal(t, http.StatusCreated, rec.Code)
 
@@ -1899,10 +1899,10 @@ func TestCreateAgent_HarnessNotTemplateUUID(t *testing.T) {
 	agent, err := s.GetAgent(ctx, resp.Agent.ID)
 	require.NoError(t, err)
 	require.NotNil(t, agent.AppliedConfig)
-	assert.Equal(t, "gemini", agent.AppliedConfig.Harness,
-		"AppliedConfig.Harness should be the harness name, not the template UUID")
-	assert.NotEqual(t, templateUUID, agent.AppliedConfig.Harness,
-		"AppliedConfig.Harness must not contain the template UUID")
+	assert.Equal(t, "gemini", agent.AppliedConfig.HarnessConfig,
+		"AppliedConfig.HarnessConfig should be the harness config name, not the template UUID")
+	assert.NotEqual(t, templateUUID, agent.AppliedConfig.HarnessConfig,
+		"AppliedConfig.HarnessConfig must not contain the template UUID")
 }
 
 // ---------------------------------------------------------------------------

@@ -219,10 +219,10 @@ func hubAgentToAgentInfo(a hubclient.Agent) api.AgentInfo {
 		StateVersion:      a.StateVersion,
 	}
 
-	// Fall back to AppliedConfig.Harness if top-level HarnessConfig is empty
+	// Fall back to AppliedConfig.HarnessConfig if top-level HarnessConfig is empty
 	// (for backward compatibility with older Hubs that don't enrich HarnessConfig)
-	if info.HarnessConfig == "" && a.AppliedConfig != nil && a.AppliedConfig.Harness != "" {
-		info.HarnessConfig = a.AppliedConfig.Harness
+	if info.HarnessConfig == "" && a.AppliedConfig != nil && a.AppliedConfig.HarnessConfig != "" {
+		info.HarnessConfig = a.AppliedConfig.HarnessConfig
 	}
 
 	// Convert Kubernetes info if present

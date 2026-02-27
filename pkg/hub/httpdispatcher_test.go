@@ -201,7 +201,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate(t *testing.T) {
 		GroveID:       "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 			Task:    "Fix a bug",
 		},
 	}
@@ -623,7 +623,7 @@ func TestHTTPAgentDispatcher_DispatchAgentProvision(t *testing.T) {
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 
@@ -750,7 +750,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_WithWorkspace(t *testing.T) {
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness:   "claude",
+			HarnessConfig:   "claude",
 			Task:      "do something",
 			Workspace: "./subfolder",
 		},
@@ -798,7 +798,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_WithCreatorName(t *testing.T) {
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness:     "claude",
+			HarnessConfig:     "claude",
 			Task:        "do something",
 			CreatorName: "alice@example.com",
 		},
@@ -844,7 +844,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_WithoutCreatorName(t *testing.T
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 
@@ -1152,7 +1152,7 @@ func TestHTTPAgentDispatcher_DispatchAgentStart_ResolvesEnvFromStorage(t *testin
 		OwnerID:         "owner-1",
 		RuntimeBrokerID: "broker-env",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "gemini",
+			HarnessConfig: "gemini",
 			Env:     map[string]string{"EXISTING_VAR": "from-config"},
 		},
 	}
@@ -1233,7 +1233,7 @@ func TestHTTPAgentDispatcher_DispatchAgentStart_ConfigEnvTakesPrecedence(t *test
 		GroveID:         "grove-prec",
 		RuntimeBrokerID: "broker-prec",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "gemini",
+			HarnessConfig: "gemini",
 			Env:     map[string]string{"API_KEY": "config-value"},
 		},
 	}
@@ -1275,7 +1275,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_InjectsDevToken(t *testing.T) {
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 
@@ -1364,7 +1364,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_DevTokenMergesWithExistingEnv(t
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 			Env: map[string]string{
 				"EXISTING_VAR": "existing-value",
 			},
@@ -1473,7 +1473,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_PropagatesGitClone(t *testing.T
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 			Task:    "implement feature",
 			GitClone: &api.GitCloneConfig{
 				URL:    "https://github.com/example/repo.git",
@@ -1536,7 +1536,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_PropagatesProfile(t *testing.T)
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 			Task:    "do something",
 			Profile: "custom-profile",
 		},
@@ -1594,7 +1594,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_PropagatesGroveSlug_HubNative(t
 		GroveID:         "grove-hub-native",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 
@@ -1647,7 +1647,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_NoGroveSlug_GitGrove(t *testing
 		GroveID:         "grove-git",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 
@@ -1690,7 +1690,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_EmptyProfile(t *testing.T) {
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 			Task:    "do something",
 		},
 	}
@@ -1760,7 +1760,7 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_NoGroveSlug_LocalPathGrove(t *t
 		GroveID:         "grove-local",
 		RuntimeBrokerID: "broker-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness:   "claude",
+			HarnessConfig:   "claude",
 			Workspace: "/should/be/cleared",
 		},
 	}
@@ -2031,7 +2031,7 @@ func TestDispatchAgentCreate_IncludesStorageEnvVars(t *testing.T) {
 		OwnerID:         "user-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "claude",
+			HarnessConfig: "claude",
 		},
 	}
 
@@ -2079,7 +2079,7 @@ func TestBuildCreateRequest_PropagatesHarnessName(t *testing.T) {
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "host-1",
 		AppliedConfig: &store.AgentAppliedConfig{
-			Harness: "gemini",
+			HarnessConfig: "gemini",
 			Task:    "do something",
 		},
 	}
@@ -2092,7 +2092,7 @@ func TestBuildCreateRequest_PropagatesHarnessName(t *testing.T) {
 	if req.Config == nil {
 		t.Fatal("expected config to be present")
 	}
-	if req.Config.Harness != "gemini" {
-		t.Errorf("expected Harness 'gemini', got '%s'", req.Config.Harness)
+	if req.Config.HarnessConfig != "gemini" {
+		t.Errorf("expected HarnessConfig 'gemini', got '%s'", req.Config.HarnessConfig)
 	}
 }

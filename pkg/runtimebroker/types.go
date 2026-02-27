@@ -229,7 +229,7 @@ type CreateAgentConfig struct {
 	Volumes     []api.VolumeMount     `json:"volumes,omitempty"`
 	Labels      map[string]string     `json:"labels,omitempty"`
 	Annotations map[string]string     `json:"annotations,omitempty"`
-	Harness     string                `json:"harness,omitempty"`
+	HarnessConfig     string                `json:"harnessConfig,omitempty"`
 	Task        string                `json:"task,omitempty"`
 	CommandArgs []string              `json:"commandArgs,omitempty"`
 	Profile     string                `json:"profile,omitempty"` // Settings profile for the runtime broker

@@ -56,7 +56,7 @@ type Agent struct {
 // AgentConfig represents agent configuration.
 type AgentConfig struct {
 	Image   string            `json:"image,omitempty"`
-	Harness string            `json:"harness,omitempty"`
+	HarnessConfig string            `json:"harnessConfig,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
 	Model   string            `json:"model,omitempty"`
 	Task    string            `json:"task,omitempty"`

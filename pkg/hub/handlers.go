@@ -172,7 +172,7 @@ type CreateAgentRequest struct {
 	GroveID       string            `json:"groveId"`
 	RuntimeBrokerID string            `json:"runtimeBrokerId,omitempty"` // Optional: uses grove's default if not specified
 	Template      string            `json:"template"`
-	Harness       string            `json:"harness,omitempty"` // Explicit harness type (used during sync when template may not be on Hub)
+	HarnessConfig       string            `json:"harnessConfig,omitempty"` // Explicit harness config name (used during sync when template may not be on Hub)
 	Profile       string            `json:"profile,omitempty"` // Settings profile for the runtime broker to use
 	Task          string            `json:"task,omitempty"`
 	Branch        string            `json:"branch,omitempty"`
@@ -428,9 +428,9 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Create agent
 
-	// Resolve harness: prefer template metadata (harness field, then slug), then explicit request field.
+	// Resolve harness config: prefer template metadata harness field, then explicit request field.
 	// Do NOT use req.Template as fallback since it may contain a UUID.
-	harness := s.getHarnessFromTemplate(resolvedTemplate, req.Harness)
+	harnessConfig := s.getHarnessConfigFromTemplate(resolvedTemplate, req.HarnessConfig)
 
 	agent := &store.Agent{
 		ID:              api.NewUUID(),
@@ -463,7 +463,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			Env:         req.Config.Env,
 			Model:       req.Config.Model,
 			Profile:     req.Profile,
-			Harness:     harness,
+			HarnessConfig:     harnessConfig,
 			Task:        req.Task,
 			Attach:      req.Attach,
 			Workspace:   req.Workspace,
@@ -474,7 +474,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		// Store task even when no config override is provided
 		agent.AppliedConfig = &store.AgentAppliedConfig{
 			Profile:     req.Profile,
-			Harness:     harness,
+			HarnessConfig:     harnessConfig,
 			Task:        req.Task,
 			Attach:      req.Attach,
 			Workspace:   req.Workspace,
@@ -870,8 +870,8 @@ func (s *Server) enrichAgents(ctx context.Context, agents []store.Agent) {
 	// Enrich agents
 	for i := range agents {
 		// Populate harness config from applied config
-		if agents[i].HarnessConfig == "" && agents[i].AppliedConfig != nil && agents[i].AppliedConfig.Harness != "" {
-			agents[i].HarnessConfig = agents[i].AppliedConfig.Harness
+		if agents[i].HarnessConfig == "" && agents[i].AppliedConfig != nil && agents[i].AppliedConfig.HarnessConfig != "" {
+			agents[i].HarnessConfig = agents[i].AppliedConfig.HarnessConfig
 		}
 		if name, ok := groveNames[agents[i].GroveID]; ok {
 			agents[i].Grove = name
@@ -905,8 +905,8 @@ func (s *Server) enrichAgent(ctx context.Context, agent *store.Agent, grove *sto
 	}
 
 	// Populate harness config from applied config
-	if agent.HarnessConfig == "" && agent.AppliedConfig != nil && agent.AppliedConfig.Harness != "" {
-		agent.HarnessConfig = agent.AppliedConfig.Harness
+	if agent.HarnessConfig == "" && agent.AppliedConfig != nil && agent.AppliedConfig.HarnessConfig != "" {
+		agent.HarnessConfig = agent.AppliedConfig.HarnessConfig
 	}
 
 	// Populate grove name
@@ -2498,9 +2498,9 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 
 	// Create agent
 
-	// Resolve harness: prefer template metadata (harness field, then slug), then explicit request field.
+	// Resolve harness config: prefer template metadata harness field, then explicit request field.
 	// Do NOT use req.Template as fallback since it may contain a UUID.
-	harness := s.getHarnessFromTemplate(resolvedTemplate, req.Harness)
+	harnessConfig := s.getHarnessConfigFromTemplate(resolvedTemplate, req.HarnessConfig)
 
 	agent := &store.Agent{
 		ID:              api.NewUUID(),
@@ -2532,7 +2532,7 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 			Env:         req.Config.Env,
 			Model:       req.Config.Model,
 			Profile:     req.Profile,
-			Harness:     harness,
+			HarnessConfig:     harnessConfig,
 			Task:        req.Task,
 			Attach:      req.Attach,
 			Workspace:   req.Workspace,
@@ -2543,7 +2543,7 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 		// Store task even when no config override is provided
 		agent.AppliedConfig = &store.AgentAppliedConfig{
 			Profile:     req.Profile,
-			Harness:     harness,
+			HarnessConfig:     harnessConfig,
 			Task:        req.Task,
 			Attach:      req.Attach,
 			Workspace:   req.Workspace,
@@ -5640,15 +5640,12 @@ func (s *Server) resolveTemplate(ctx context.Context, templateRef, groveID strin
 	return template, nil
 }
 
-// getHarnessFromTemplate returns the harness type from a resolved template,
+// getHarnessConfigFromTemplate returns the harness config name from a resolved template,
 // or the fallback value if no template was resolved.
-func (s *Server) getHarnessFromTemplate(template *store.Template, fallback string) string {
+func (s *Server) getHarnessConfigFromTemplate(template *store.Template, fallback string) string {
 	if template != nil {
 		if template.Harness != "" {
 			return template.Harness
-		}
-		if template.Slug != "" {
-			return template.Slug
 		}
 	}
 	return fallback

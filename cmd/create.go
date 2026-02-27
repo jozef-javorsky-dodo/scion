@@ -141,7 +141,7 @@ func createAgentViaHub(hubCtx *HubContext, agentName string, task string) error 
 		Name:            agentName,
 		GroveID:         groveID,
 		Template:        resolvedTemplate,
-		Harness:         harnessConfigFlag,
+		HarnessConfig:         harnessConfigFlag,
 		RuntimeBrokerID: runtimeBrokerID,
 		Task:            task,
 		Branch:          branch,

@@ -300,7 +300,7 @@ export class ScionPageAgentCreate extends LitElement {
       const body: Record<string, unknown> = {
         name: this.name.trim(),
         groveId: this.groveId,
-        harness: this.harness,
+        harnessConfig: this.harness,
       };
 
       if (this.templateId) {
