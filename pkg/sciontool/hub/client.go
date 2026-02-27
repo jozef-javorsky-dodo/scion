@@ -111,7 +111,7 @@ func NewClient() *Client {
 	token := os.Getenv(EnvHubToken)
 	agentID := os.Getenv(EnvAgentID)
 
-	if hubURL == "" || token == "" {
+	if hubURL == "" || token == "" || agentID == "" {
 		return nil
 	}
 
@@ -163,10 +163,6 @@ func GetAgentID() string {
 func (c *Client) UpdateStatus(ctx context.Context, status StatusUpdate) error {
 	if !c.IsConfigured() {
 		return fmt.Errorf("hub client not configured")
-	}
-
-	if c.agentID == "" {
-		return fmt.Errorf("agent ID not set")
 	}
 
 	endpoint := fmt.Sprintf("%s/api/v1/agents/%s/status", strings.TrimSuffix(c.hubURL, "/"), c.agentID)

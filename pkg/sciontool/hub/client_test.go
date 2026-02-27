@@ -60,6 +60,15 @@ func TestNewClient_FromEnvironment(t *testing.T) {
 		assert.Nil(t, client)
 	})
 
+	t.Run("missing agentID returns nil", func(t *testing.T) {
+		os.Setenv(EnvHubEndpoint, "http://hub.example.com")
+		os.Setenv(EnvHubToken, "test-token")
+		os.Unsetenv(EnvAgentID)
+
+		client := NewClient()
+		assert.Nil(t, client, "should not create client without agent ID (local agent scenario)")
+	})
+
 	t.Run("with all env vars returns client", func(t *testing.T) {
 		os.Unsetenv(EnvHubEndpoint)
 		os.Setenv(EnvHubURL, "http://hub.example.com")
