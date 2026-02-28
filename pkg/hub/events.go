@@ -71,7 +71,6 @@ type AgentDetail struct {
 type AgentStatusEvent struct {
 	AgentID         string       `json:"agentId"`
 	GroveID         string       `json:"groveId"`
-	Status          string       `json:"status"`
 	Phase           string       `json:"phase,omitempty"`
 	Activity        string       `json:"activity,omitempty"`
 	Detail          *AgentDetail `json:"detail,omitempty"`
@@ -229,7 +228,6 @@ func (p *ChannelEventPublisher) PublishAgentStatus(_ context.Context, agent *sto
 	evt := AgentStatusEvent{
 		AgentID:         agent.ID,
 		GroveID:         agent.GroveID,
-		Status:          agent.Status,
 		Phase:           agent.Phase,
 		Activity:        agent.Activity,
 		ContainerStatus: agent.ContainerStatus,

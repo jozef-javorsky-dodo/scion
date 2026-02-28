@@ -132,14 +132,13 @@ type AgentStore interface {
 type AgentFilter struct {
 	GroveID         string
 	RuntimeBrokerID string
-	Status          string
+	Phase           string
 	OwnerID         string
 	IncludeDeleted  bool // If true, include soft-deleted agents in results
 }
 
 // AgentStatusUpdate contains fields for status-only updates.
 type AgentStatusUpdate struct {
-	Status          string            `json:"status,omitempty"`
 	Phase           string            `json:"phase,omitempty"`
 	Activity        string            `json:"activity,omitempty"`
 	ToolName        string            `json:"toolName,omitempty"`

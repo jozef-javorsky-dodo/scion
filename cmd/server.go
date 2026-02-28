@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/apiclient"
 	"github.com/ptone/scion-agent/pkg/brokercredentials"
@@ -1238,7 +1239,7 @@ func (d *agentDispatcherAdapter) DispatchAgentCreate(ctx context.Context, hubAge
 	}
 
 	// Update the hub agent record with runtime information
-	hubAgent.Status = store.AgentStatusRunning
+	hubAgent.Phase = string(state.PhaseRunning)
 	hubAgent.ContainerStatus = agentInfo.ContainerStatus
 	if agentInfo.ID != "" {
 		hubAgent.RuntimeState = "container:" + agentInfo.ID
@@ -1270,7 +1271,7 @@ func (d *agentDispatcherAdapter) DispatchAgentStop(ctx context.Context, hubAgent
 	}
 
 	// Update the hub agent record
-	hubAgent.Status = store.AgentStatusStopped
+	hubAgent.Phase = string(state.PhaseStopped)
 	hubAgent.LastSeen = time.Now()
 
 	if err := d.store.UpdateAgent(ctx, hubAgent); err != nil {
@@ -1289,8 +1290,8 @@ func (d *agentDispatcherAdapter) DispatchAgentRestart(ctx context.Context, hubAg
 	}
 
 	// TODO: Implement proper restart with start after stop
-	// For now, just update status
-	hubAgent.Status = store.AgentStatusRunning
+	// For now, just update phase
+	hubAgent.Phase = string(state.PhaseRunning)
 	hubAgent.LastSeen = time.Now()
 
 	if err := d.store.UpdateAgent(ctx, hubAgent); err != nil {

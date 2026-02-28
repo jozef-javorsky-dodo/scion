@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/ptone/scion-agent/pkg/store/sqlite"
 )
@@ -179,7 +180,7 @@ func TestAgentList(t *testing.T) {
 			Slug:      "test-agent-" + string(rune('a'+i)),
 			Name:         "Test Agent " + string(rune('A'+i)),
 			GroveID:      grove.ID,
-			Status:       store.AgentStatusStopped,
+			Phase: string(state.PhaseStopped),
 			StateVersion: 1,
 			Created:      time.Now(),
 			Updated:      time.Now(),
@@ -277,8 +278,8 @@ func TestAgentCreate(t *testing.T) {
 		t.Error("expected ID to be set")
 	}
 
-	if resp.Agent.Status != store.AgentStatusPending {
-		t.Errorf("expected status 'pending', got %q", resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseCreated) {
+		t.Errorf("expected status 'pending', got %q", resp.Agent.Phase)
 	}
 
 	if resp.Agent.RuntimeBrokerID != broker.ID {
@@ -349,8 +350,8 @@ func TestAgentCreate_NoTask(t *testing.T) {
 		t.Fatal("expected agent to be set")
 	}
 
-	if resp.Agent.Status != store.AgentStatusPending {
-		t.Errorf("expected status 'pending', got %q", resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseCreated) {
+		t.Errorf("expected status 'pending', got %q", resp.Agent.Phase)
 	}
 
 	if resp.Agent.Slug != "taskless-agent" {
@@ -419,8 +420,8 @@ func TestAgentCreate_NoTaskViaGrove(t *testing.T) {
 		t.Fatal("expected agent to be set")
 	}
 
-	if resp.Agent.Status != store.AgentStatusPending {
-		t.Errorf("expected status 'pending', got %q", resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseCreated) {
+		t.Errorf("expected status 'pending', got %q", resp.Agent.Phase)
 	}
 }
 
@@ -676,7 +677,7 @@ func TestAgentGetByID(t *testing.T) {
 		Slug:      "test-agent",
 		Name:         "Test Agent",
 		GroveID:      grove.ID,
-		Status:       store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -742,7 +743,7 @@ func TestAgentDelete(t *testing.T) {
 		Slug:      "delete-me",
 		Name:         "Delete Me",
 		GroveID:      grove.ID,
-		Status:       store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),

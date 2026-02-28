@@ -530,9 +530,9 @@ func ProvisionAgent(ctx context.Context, agentName string, templateName string, 
 		Profile:       profileName,
 	}
 	if optionalStatus != "" {
-		info.Status = optionalStatus
+		info.Phase = optionalStatus
 	} else {
-		info.Status = "created"
+		info.Phase = "created"
 	}
 	if agentImage != "" {
 		info.Image = agentImage
@@ -652,7 +652,7 @@ func UpdateAgentConfig(agentName string, grovePath string, status string, runtim
 	}
 
 	if status != "" {
-		info.Status = status
+		info.Phase = status
 	}
 	if runtime != "" {
 		info.Runtime = runtime

@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -313,7 +314,7 @@ func TestAuthz_AgentDirectPolicy(t *testing.T) {
 	}))
 	require.NoError(t, s.CreateAgent(ctx, &store.Agent{
 		ID: "agent-direct", Slug: "agent-direct", Name: "Agent Direct",
-		GroveID: "grove-agent-1", Status: store.AgentStatusRunning,
+		GroveID: "grove-agent-1", Phase: string(state.PhaseRunning),
 	}))
 
 	// Create and bind policy to agent

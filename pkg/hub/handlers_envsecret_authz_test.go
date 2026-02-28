@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/secret"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 )
 
@@ -336,7 +337,7 @@ func TestEnvVar_GroveScope_AgentReadOwnGrove(t *testing.T) {
 		Slug:         "env-test-agent",
 		Name:         "Env Test Agent",
 		GroveID:      grove.ID,
-		Status:       store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -378,7 +379,7 @@ func TestEnvVar_GroveScope_AgentOtherGroveDenied(t *testing.T) {
 
 	agent := &store.Agent{
 		ID: "agent_other_grove", Slug: "other-grove-agent", Name: "Other Grove Agent",
-		GroveID: grove1.ID, Status: store.AgentStatusRunning, StateVersion: 1,
+		GroveID: grove1.ID, Phase: string(state.PhaseRunning), StateVersion: 1,
 		Created: time.Now(), Updated: time.Now(),
 	}
 	if err := s.CreateAgent(ctx, agent); err != nil {
@@ -411,7 +412,7 @@ func TestEnvVar_GroveScope_AgentWriteDenied(t *testing.T) {
 
 	agent := &store.Agent{
 		ID: "agent_nowrite", Slug: "nowrite-agent", Name: "No Write Agent",
-		GroveID: grove.ID, Status: store.AgentStatusRunning, StateVersion: 1,
+		GroveID: grove.ID, Phase: string(state.PhaseRunning), StateVersion: 1,
 		Created: time.Now(), Updated: time.Now(),
 	}
 	if err := s.CreateAgent(ctx, agent); err != nil {
@@ -610,7 +611,7 @@ func TestSecret_GroveScope_AgentReadOwnGrove(t *testing.T) {
 
 	agent := &store.Agent{
 		ID: "agent_sec_test", Slug: "sec-test-agent", Name: "Secret Test Agent",
-		GroveID: grove.ID, Status: store.AgentStatusRunning, StateVersion: 1,
+		GroveID: grove.ID, Phase: string(state.PhaseRunning), StateVersion: 1,
 		Created: time.Now(), Updated: time.Now(),
 	}
 	if err := s.CreateAgent(ctx, agent); err != nil {
@@ -643,7 +644,7 @@ func TestSecret_GroveScope_AgentWriteDenied(t *testing.T) {
 
 	agent := &store.Agent{
 		ID: "agent_sec_nowrite", Slug: "sec-nowrite-agent", Name: "Secret No Write Agent",
-		GroveID: grove.ID, Status: store.AgentStatusRunning, StateVersion: 1,
+		GroveID: grove.ID, Phase: string(state.PhaseRunning), StateVersion: 1,
 		Created: time.Now(), Updated: time.Now(),
 	}
 	if err := s.CreateAgent(ctx, agent); err != nil {

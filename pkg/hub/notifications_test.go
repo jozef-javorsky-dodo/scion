@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/ptone/scion-agent/pkg/store/sqlite"
@@ -136,7 +137,7 @@ func setupNotificationTest(t *testing.T) *notificationTestEnv {
 		Name:            "Watched Agent",
 		Template:        "claude",
 		GroveID:         grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: "broker-1",
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -148,7 +149,7 @@ func setupNotificationTest(t *testing.T) *notificationTestEnv {
 		Name:            "Subscriber Agent",
 		Template:        "claude",
 		GroveID:         grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: "broker-1",
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -181,11 +182,13 @@ func setupNotificationTest(t *testing.T) *notificationTestEnv {
 }
 
 // publishStatus publishes an agent status event via the event publisher.
-func (env *notificationTestEnv) publishStatus(status string) {
+func (env *notificationTestEnv) publishStatus(activity string) {
 	env.pub.PublishAgentStatus(context.Background(), &store.Agent{
-		ID:      env.watched.ID,
-		GroveID: env.grove.ID,
-		Status:  status,
+		ID:       env.watched.ID,
+		Slug:     env.watched.Slug,
+		GroveID:  env.grove.ID,
+		Phase:    string(state.PhaseRunning),
+		Activity: activity,
 	})
 }
 
@@ -282,9 +285,10 @@ func TestNotificationDispatcher_NoSubscriptions(t *testing.T) {
 
 	// Publish status for an agent with no subscriptions
 	env.pub.PublishAgentStatus(context.Background(), &store.Agent{
-		ID:      api.NewUUID(), // different agent
-		GroveID: env.grove.ID,
-		Status:  "completed",
+		ID:       api.NewUUID(), // different agent
+		GroveID:  env.grove.ID,
+		Phase:    string(state.PhaseRunning),
+		Activity: "completed",
 	})
 
 	time.Sleep(200 * time.Millisecond)

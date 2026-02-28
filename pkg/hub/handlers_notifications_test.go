@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ func setupNotificationHandlerTest(t *testing.T) (*Server, store.Store, string) {
 		Slug:    "watched-agent",
 		Name:    "Watched Agent",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 
@@ -193,7 +194,7 @@ func TestHandleNotifications_RejectAgentToken(t *testing.T) {
 		Slug:    "auth-agent",
 		Name:    "Auth Agent",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 

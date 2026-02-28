@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/gcp"
 	"github.com/ptone/scion-agent/pkg/storage"
 	"github.com/ptone/scion-agent/pkg/store"
@@ -201,7 +202,7 @@ func (s *Server) handleWorkspaceSyncFrom(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Check agent is running
-	if agent.Status != "running" {
+	if agent.Phase != string(state.PhaseRunning) {
 		Conflict(w, "Agent is not running")
 		return
 	}
@@ -394,7 +395,7 @@ func (s *Server) handleWorkspaceSyncToFinalize(w http.ResponseWriter, r *http.Re
 	}
 
 	// Check agent is in a valid state for finalize
-	if agent.Status != "running" && agent.Status != "provisioning" {
+	if agent.Phase != string(state.PhaseRunning) && agent.Phase != string(state.PhaseProvisioning) {
 		Conflict(w, "Agent must be running or provisioning")
 		return
 	}
@@ -433,7 +434,7 @@ func (s *Server) handleWorkspaceSyncToFinalize(w http.ResponseWriter, r *http.Re
 	}
 
 	// Bootstrap mode: agent is provisioning, dispatch to broker now
-	if agent.Status == "provisioning" {
+	if agent.Phase == string(state.PhaseProvisioning) {
 		// Store workspace storage path on agent record for broker download
 		if agent.AppliedConfig == nil {
 			agent.AppliedConfig = &store.AgentAppliedConfig{}

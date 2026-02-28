@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,7 +78,7 @@ func TestAgentGroups(t *testing.T) {
 		Slug:    "agent-1-slug",
 		Name:    "Agent 1",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 
@@ -140,7 +141,7 @@ func TestPrincipalResolve_Agent(t *testing.T) {
 		Slug:    "agent-1-slug",
 		Name:    "Agent 1",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 
@@ -242,7 +243,7 @@ func TestPrincipalResolve_AgentWithCreator(t *testing.T) {
 		Slug:      "agent-deleg-slug",
 		Name:      "Delegated Agent",
 		GroveID:   grove.ID,
-		Status:    store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		CreatedBy: "creator-1",
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))

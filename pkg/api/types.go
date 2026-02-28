@@ -333,7 +333,6 @@ type AgentInfo struct {
 
 	// Status fields
 	ContainerStatus string       `json:"containerStatus,omitempty"` // Container status (e.g., Up 2 hours)
-	Status          string       `json:"status,omitempty"`          // Scion agent status (e.g., running, stopped, WAITING_FOR_INPUT, COMPLETED)
 	Phase           string       `json:"phase,omitempty"`           // Lifecycle phase (created, provisioning, running, stopped, error)
 	Activity        string       `json:"activity,omitempty"`        // Runtime activity (idle, thinking, executing, waiting_for_input, completed)
 	Detail          *AgentDetail `json:"detail,omitempty"`          // Freeform context about the current activity

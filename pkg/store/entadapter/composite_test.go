@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/ent/entc"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/ptone/scion-agent/pkg/store/sqlite"
@@ -164,7 +165,7 @@ func TestCompositeStore_AddGroupMember_AgentShadowRecord(t *testing.T) {
 		Name:         "Test Agent",
 		Slug:         "test-agent",
 		GroveID:      groveID,
-		Status:       store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),

@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
@@ -66,7 +67,7 @@ func TestAgentCRUD(t *testing.T) {
 		Name:       "Test Agent",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusPending,
+		Phase: string(state.PhaseCreated),
 		Visibility: store.VisibilityPrivate,
 		Labels:     map[string]string{"env": "test"},
 	}
@@ -92,7 +93,7 @@ func TestAgentCRUD(t *testing.T) {
 
 	// Update agent
 	retrieved.Name = "Updated Agent"
-	retrieved.Status = store.AgentStatusRunning
+	retrieved.Phase = string(state.PhaseRunning)
 	err = s.UpdateAgent(ctx, retrieved)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), retrieved.StateVersion)
@@ -101,7 +102,7 @@ func TestAgentCRUD(t *testing.T) {
 	retrieved, err = s.GetAgent(ctx, agent.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Updated Agent", retrieved.Name)
-	assert.Equal(t, store.AgentStatusRunning, retrieved.Status)
+	assert.Equal(t, string(state.PhaseRunning), retrieved.Phase)
 
 	// Test version conflict
 	oldVersion := retrieved.StateVersion
@@ -142,11 +143,11 @@ func TestAgentList(t *testing.T) {
 			Name:       "Agent " + string(rune('A'+i)),
 			Template:   "claude",
 			GroveID:    grove.ID,
-			Status:     store.AgentStatusRunning,
+			Phase: string(state.PhaseRunning),
 			Visibility: store.VisibilityPrivate,
 		}
 		if i%2 == 0 {
-			agent.Status = store.AgentStatusStopped
+			agent.Phase = string(state.PhaseStopped)
 		}
 		require.NoError(t, s.CreateAgent(ctx, agent))
 	}
@@ -158,7 +159,7 @@ func TestAgentList(t *testing.T) {
 	assert.Len(t, result.Items, 5)
 
 	// List by status
-	result, err = s.ListAgents(ctx, store.AgentFilter{Status: store.AgentStatusRunning}, store.ListOptions{})
+	result, err = s.ListAgents(ctx, store.AgentFilter{Phase: string(state.PhaseRunning)}, store.ListOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.TotalCount)
 
@@ -192,24 +193,24 @@ func TestAgentStatusUpdate(t *testing.T) {
 		Name:       "Test Agent",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusPending,
+		Phase: string(state.PhaseCreated),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 
 	// Legacy path: update flat status only (backward compat)
 	err := s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		ContainerStatus: "Up 5 minutes",
 	})
 	require.NoError(t, err)
 
 	retrieved, err := s.GetAgent(ctx, agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.AgentStatusRunning, retrieved.Status)
+	assert.Equal(t, string(state.PhaseRunning), retrieved.Phase)
 	assert.Equal(t, "Up 5 minutes", retrieved.ContainerStatus)
 
-	// Structured path: set phase + activity → status is computed
+	// Structured path: set phase + activity
 	err = s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
 		Phase:    "running",
 		Activity: "thinking",
@@ -218,7 +219,6 @@ func TestAgentStatusUpdate(t *testing.T) {
 
 	retrieved, err = s.GetAgent(ctx, agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "thinking", retrieved.Status, "status should be computed from activity when phase=running")
 	assert.Equal(t, "running", retrieved.Phase)
 	assert.Equal(t, "thinking", retrieved.Activity)
 
@@ -232,7 +232,6 @@ func TestAgentStatusUpdate(t *testing.T) {
 
 	retrieved, err = s.GetAgent(ctx, agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "executing", retrieved.Status)
 	assert.Equal(t, "executing", retrieved.Activity)
 	assert.Equal(t, "Bash", retrieved.ToolName)
 
@@ -245,7 +244,6 @@ func TestAgentStatusUpdate(t *testing.T) {
 
 	retrieved, err = s.GetAgent(ctx, agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "idle", retrieved.Status)
 	assert.Equal(t, "idle", retrieved.Activity)
 	assert.Equal(t, "", retrieved.ToolName, "toolName should be cleared when activity changes away from executing")
 
@@ -260,7 +258,7 @@ func TestAgentStatusUpdate(t *testing.T) {
 	assert.Equal(t, "running", retrieved.Phase, "phase should be preserved")
 	assert.Equal(t, "waiting_for_input", retrieved.Activity)
 
-	// Non-running phase: status = phase
+	// Non-running phase
 	err = s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
 		Phase: "stopped",
 	})
@@ -268,7 +266,6 @@ func TestAgentStatusUpdate(t *testing.T) {
 
 	retrieved, err = s.GetAgent(ctx, agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "stopped", retrieved.Status, "status should be the phase for non-running phases")
 	assert.Equal(t, "stopped", retrieved.Phase)
 }
 
@@ -291,7 +288,6 @@ func TestAgentStatusUpdate_PhaseActivityRoundTrip(t *testing.T) {
 		Name:       "Roundtrip Agent",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     "running",
 		Phase:      "running",
 		Activity:   "idle",
 		Visibility: store.VisibilityPrivate,
@@ -339,11 +335,10 @@ func TestSoftDeleteFilterExclusion(t *testing.T) {
 			Name:       "SD Agent " + string(rune('A'+i)),
 			Template:   "claude",
 			GroveID:    grove.ID,
-			Status:     store.AgentStatusRunning,
+			Phase: string(state.PhaseRunning),
 			Visibility: store.VisibilityPrivate,
 		}
 		if i == 2 {
-			agent.Status = store.AgentStatusDeleted
 			agent.DeletedAt = time.Now()
 		}
 		require.NoError(t, s.CreateAgent(ctx, agent))
@@ -355,7 +350,7 @@ func TestSoftDeleteFilterExclusion(t *testing.T) {
 	assert.Equal(t, 2, result.TotalCount)
 	assert.Len(t, result.Items, 2)
 	for _, a := range result.Items {
-		assert.NotEqual(t, store.AgentStatusDeleted, a.Status)
+		assert.True(t, a.DeletedAt.IsZero(), "non-deleted agent should have zero DeletedAt")
 	}
 
 	// List with IncludeDeleted: should see 3
@@ -364,12 +359,15 @@ func TestSoftDeleteFilterExclusion(t *testing.T) {
 	assert.Equal(t, 3, result.TotalCount)
 	assert.Len(t, result.Items, 3)
 
-	// List with Status=deleted: should see 1 (the deleted one)
-	result, err = s.ListAgents(ctx, store.AgentFilter{Status: store.AgentStatusDeleted}, store.ListOptions{})
-	require.NoError(t, err)
-	assert.Equal(t, 1, result.TotalCount)
-	assert.Len(t, result.Items, 1)
-	assert.Equal(t, store.AgentStatusDeleted, result.Items[0].Status)
+	// List with IncludeDeleted: should see all 3 (including the deleted one)
+	// Verify we can find the soft-deleted agent
+	var deletedCount int
+	for _, a := range result.Items {
+		if !a.DeletedAt.IsZero() {
+			deletedCount++
+		}
+	}
+	assert.Equal(t, 1, deletedCount, "should have exactly one soft-deleted agent")
 }
 
 func TestPurgeDeletedAgents(t *testing.T) {
@@ -393,7 +391,7 @@ func TestPurgeDeletedAgents(t *testing.T) {
 		Name:       "Old Deleted",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusDeleted,
+		Phase:      string(state.PhaseStopped),
 		DeletedAt:  now.Add(-48 * time.Hour),
 		Visibility: store.VisibilityPrivate,
 	}
@@ -403,7 +401,7 @@ func TestPurgeDeletedAgents(t *testing.T) {
 		Name:       "Recent Deleted",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusDeleted,
+		Phase:      string(state.PhaseStopped),
 		DeletedAt:  now.Add(-1 * time.Hour),
 		Visibility: store.VisibilityPrivate,
 	}
@@ -413,7 +411,7 @@ func TestPurgeDeletedAgents(t *testing.T) {
 		Name:       "Active Agent",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, oldAgent))
@@ -458,7 +456,7 @@ func TestDeletedAtPersistence(t *testing.T) {
 		Name:       "Soft Delete Test",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
@@ -470,7 +468,6 @@ func TestDeletedAtPersistence(t *testing.T) {
 
 	// Soft-delete
 	deletedAt := time.Now().Truncate(time.Second)
-	retrieved.Status = store.AgentStatusDeleted
 	retrieved.DeletedAt = deletedAt
 	retrieved.Updated = time.Now()
 	require.NoError(t, s.UpdateAgent(ctx, retrieved))
@@ -478,26 +475,22 @@ func TestDeletedAtPersistence(t *testing.T) {
 	// Retrieve and verify DeletedAt is set
 	retrieved2, err := s.GetAgent(ctx, agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.AgentStatusDeleted, retrieved2.Status)
-	assert.False(t, retrieved2.DeletedAt.IsZero())
+	assert.False(t, retrieved2.DeletedAt.IsZero(), "soft-deleted agent should have non-zero DeletedAt")
 	assert.WithinDuration(t, deletedAt, retrieved2.DeletedAt, time.Second)
 
 	// Verify GetAgentBySlug also returns DeletedAt
 	bySlug, err := s.GetAgentBySlug(ctx, grove.ID, "soft-del-test")
 	require.NoError(t, err)
-	assert.Equal(t, store.AgentStatusDeleted, bySlug.Status)
-	assert.False(t, bySlug.DeletedAt.IsZero())
+	assert.False(t, bySlug.DeletedAt.IsZero(), "soft-deleted agent fetched by slug should have non-zero DeletedAt")
 
 	// Verify restore clears DeletedAt
-	bySlug.Status = store.AgentStatusRestored
 	bySlug.DeletedAt = time.Time{}
 	bySlug.Updated = time.Now()
 	require.NoError(t, s.UpdateAgent(ctx, bySlug))
 
 	restored, err := s.GetAgent(ctx, agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.AgentStatusRestored, restored.Status)
-	assert.True(t, restored.DeletedAt.IsZero())
+	assert.True(t, restored.DeletedAt.IsZero(), "restored agent should have zero DeletedAt")
 }
 
 // ============================================================================
@@ -602,7 +595,7 @@ func TestGroveList(t *testing.T) {
 				Slug:    "test-agent",
 				Name:    "Test Agent",
 				GroveID: grove.ID,
-				Status:  store.AgentStatusRunning,
+				Phase: string(state.PhaseRunning),
 			}
 			require.NoError(t, s.CreateAgent(ctx, agent))
 
@@ -1312,7 +1305,7 @@ func TestCascadeDelete(t *testing.T) {
 		Name:       "Test Agent",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
@@ -1356,7 +1349,7 @@ func TestMarkStaleAgentsOffline(t *testing.T) {
 			Name:       "Active Agent " + activity,
 			Template:   "claude",
 			GroveID:    grove.ID,
-			Status:     store.AgentStatusPending,
+			Phase: string(state.PhaseCreated),
 			Visibility: store.VisibilityPrivate,
 		}
 		require.NoError(t, s.CreateAgent(ctx, agent))
@@ -1380,7 +1373,7 @@ func TestMarkStaleAgentsOffline(t *testing.T) {
 	// Sticky activity: completed (phase=running)
 	completedAgent := &store.Agent{
 		ID: api.NewUUID(), Slug: "completed-agent", Name: "Completed Agent",
-		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusPending,
+		Template: "claude", GroveID: grove.ID, Phase: string(state.PhaseCreated),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, completedAgent))
@@ -1393,7 +1386,7 @@ func TestMarkStaleAgentsOffline(t *testing.T) {
 	// Sticky activity: limits_exceeded (phase=running)
 	limitsAgent := &store.Agent{
 		ID: api.NewUUID(), Slug: "limits-agent", Name: "Limits Agent",
-		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusPending,
+		Template: "claude", GroveID: grove.ID, Phase: string(state.PhaseCreated),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, limitsAgent))
@@ -1406,8 +1399,7 @@ func TestMarkStaleAgentsOffline(t *testing.T) {
 	// Non-running phase: stopped
 	stoppedAgent := &store.Agent{
 		ID: api.NewUUID(), Slug: "stopped-agent", Name: "Stopped Agent",
-		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusStopped,
-		Phase: "stopped",
+		Template: "claude", GroveID: grove.ID, Phase: string(state.PhaseStopped),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, stoppedAgent))
@@ -1417,7 +1409,7 @@ func TestMarkStaleAgentsOffline(t *testing.T) {
 	// Recent heartbeat (should not be affected)
 	recentAgent := &store.Agent{
 		ID: api.NewUUID(), Slug: "recent-agent", Name: "Recent Agent",
-		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusPending,
+		Template: "claude", GroveID: grove.ID, Phase: string(state.PhaseCreated),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, recentAgent))
@@ -1437,7 +1429,7 @@ func TestMarkStaleAgentsOffline(t *testing.T) {
 		returnedIDs[a.ID] = true
 		assert.Equal(t, "offline", a.Activity, "returned agent should have offline activity")
 		assert.Equal(t, "running", a.Phase, "returned agent should still have running phase")
-		assert.Equal(t, store.AgentStatusOffline, a.Status, "returned agent should have offline status")
+		assert.Equal(t, string(state.ActivityOffline), a.Activity, "returned agent should have offline activity")
 	}
 	for _, id := range expectedIDs {
 		assert.True(t, returnedIDs[id], "expected agent %s to be in returned set", id)
@@ -1480,7 +1472,7 @@ func TestMarkStaleAgentsOffline_Idempotent(t *testing.T) {
 
 	agent := &store.Agent{
 		ID: api.NewUUID(), Slug: "stale-agent", Name: "Stale Agent",
-		Template: "claude", GroveID: grove.ID, Status: store.AgentStatusPending,
+		Template: "claude", GroveID: grove.ID, Phase: string(state.PhaseCreated),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))

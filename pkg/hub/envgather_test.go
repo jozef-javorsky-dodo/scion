@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/ptone/scion-agent/pkg/secret"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 )
 
@@ -319,8 +320,8 @@ func TestEnvGather_HubHandler_202Response(t *testing.T) {
 	if resp.Agent == nil {
 		t.Fatal("expected agent in response")
 	}
-	if resp.Agent.Status != store.AgentStatusProvisioning {
-		t.Errorf("expected agent status=%q, got %q", store.AgentStatusProvisioning, resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseProvisioning) {
+		t.Errorf("expected agent status=%q, got %q", string(state.PhaseProvisioning), resp.Agent.Phase)
 	}
 }
 
@@ -395,8 +396,8 @@ func TestEnvGather_HubHandler_GroveRoute_202Response(t *testing.T) {
 	if resp.Agent == nil {
 		t.Fatal("expected agent in response")
 	}
-	if resp.Agent.Status != store.AgentStatusProvisioning {
-		t.Errorf("expected agent status=%q, got %q", store.AgentStatusProvisioning, resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseProvisioning) {
+		t.Errorf("expected agent status=%q, got %q", string(state.PhaseProvisioning), resp.Agent.Phase)
 	}
 
 	// Verify the dispatcher was called with gather (not regular create)
@@ -432,7 +433,7 @@ func TestEnvGather_HubHandler_SubmitEnv(t *testing.T) {
 		Slug:            "submit-agent",
 		GroveID:         "grove-submit",
 		RuntimeBrokerID: "broker-submit",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 		AppliedConfig: &store.AgentAppliedConfig{
 			HarnessConfig: "claude",
 		},
@@ -473,8 +474,8 @@ func TestEnvGather_HubHandler_SubmitEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Status != store.AgentStatusRunning {
-		t.Errorf("expected agent status=running, got %q", updated.Status)
+	if updated.Phase != string(state.PhaseRunning) {
+		t.Errorf("expected agent status=running, got %q", updated.Phase)
 	}
 }
 
@@ -496,7 +497,7 @@ func TestEnvGather_HubHandler_SubmitEnv_InvalidState(t *testing.T) {
 		Name:    "invalid-agent",
 		Slug:    "invalid-agent",
 		GroveID: "grove-invalid",
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	if err := st.CreateAgent(ctx, agent); err != nil {
 		t.Fatal(err)
@@ -610,7 +611,7 @@ func TestEnvGather_HubHandler_RetryAfterCancel_GlobalRoute(t *testing.T) {
 		Slug:            "retry-agent",
 		GroveID:         "grove-retry-global",
 		RuntimeBrokerID: "broker-retry-global",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 		AppliedConfig: &store.AgentAppliedConfig{
 			HarnessConfig: "claude",
 		},
@@ -670,8 +671,8 @@ func TestEnvGather_HubHandler_RetryAfterCancel_GlobalRoute(t *testing.T) {
 	if resp.Agent.ID == "stale-agent-global" {
 		t.Error("expected a new agent ID, got the stale agent ID")
 	}
-	if resp.Agent.Status != store.AgentStatusProvisioning {
-		t.Errorf("expected status=%q, got %q", store.AgentStatusProvisioning, resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseProvisioning) {
+		t.Errorf("expected status=%q, got %q", string(state.PhaseProvisioning), resp.Agent.Phase)
 	}
 
 	// The old agent should no longer exist in the store
@@ -1128,8 +1129,8 @@ func TestNonGatherEnv_AllSatisfied_Returns201(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected agent to exist in store: %v", err)
 	}
-	if agent.Status != store.AgentStatusProvisioning && agent.Status != store.AgentStatusRunning {
-		t.Errorf("expected agent status provisioning or running, got %q", agent.Status)
+	if agent.Phase != string(state.PhaseProvisioning) && agent.Phase != string(state.PhaseRunning) {
+		t.Errorf("expected agent status provisioning or running, got %q", agent.Phase)
 	}
 
 	// The dispatcher should have used CreateAgentWithGather (not regular Create)
@@ -1171,7 +1172,7 @@ func TestEnvGather_HubHandler_RetryAfterCancel_GroveRoute(t *testing.T) {
 		Slug:            "retry-route-agent",
 		GroveID:         "grove-retry-route",
 		RuntimeBrokerID: "broker-retry-route",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 		AppliedConfig: &store.AgentAppliedConfig{
 			HarnessConfig: "claude",
 		},
@@ -1226,8 +1227,8 @@ func TestEnvGather_HubHandler_RetryAfterCancel_GroveRoute(t *testing.T) {
 	if resp.Agent.ID == "stale-agent-route" {
 		t.Error("expected a new agent ID, got the stale agent ID")
 	}
-	if resp.Agent.Status != store.AgentStatusProvisioning {
-		t.Errorf("expected status=%q, got %q", store.AgentStatusProvisioning, resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseProvisioning) {
+		t.Errorf("expected status=%q, got %q", string(state.PhaseProvisioning), resp.Agent.Phase)
 	}
 
 	// The old agent should no longer exist in the store

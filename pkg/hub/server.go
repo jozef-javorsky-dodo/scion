@@ -332,7 +332,9 @@ type RemoteAgentInfo struct {
 	Template        string `json:"template,omitempty"`
 	HarnessConfig   string `json:"harnessConfig,omitempty"`
 	Runtime         string `json:"runtime,omitempty"`
-	Status          string `json:"status"`
+	Phase           string `json:"phase,omitempty"`           // Lifecycle phase
+	Activity        string `json:"activity,omitempty"`        // Runtime activity
+	Status          string `json:"status"`                    // Legacy: kept for backward compat with older brokers
 	ContainerStatus string `json:"containerStatus,omitempty"`
 }
 

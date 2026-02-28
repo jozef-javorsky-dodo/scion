@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,7 +33,7 @@ import (
 type noopDispatcher struct{}
 
 func (noopDispatcher) DispatchAgentCreate(_ context.Context, agent *store.Agent) error {
-	agent.Status = store.AgentStatusRunning
+	agent.Phase = string(state.PhaseRunning)
 	return nil
 }
 func (noopDispatcher) DispatchAgentProvision(_ context.Context, _ *store.Agent) error { return nil }
@@ -51,7 +52,7 @@ func (noopDispatcher) DispatchCheckAgentPrompt(_ context.Context, _ *store.Agent
 	return false, nil
 }
 func (noopDispatcher) DispatchAgentCreateWithGather(_ context.Context, agent *store.Agent) (*RemoteEnvRequirementsResponse, error) {
-	agent.Status = store.AgentStatusRunning
+	agent.Phase = string(state.PhaseRunning)
 	return nil, nil
 }
 func (noopDispatcher) DispatchFinalizeEnv(_ context.Context, _ *store.Agent, _ map[string]string) error {
@@ -136,7 +137,7 @@ func TestEventPublisher_DeleteAgentEmitsEvent(t *testing.T) {
 		Slug:    "agent-evt-del",
 		Name:    "Delete Me",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 

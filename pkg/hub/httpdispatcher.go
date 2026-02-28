@@ -727,15 +727,20 @@ func (d *HTTPAgentDispatcher) buildCreateRequest(ctx context.Context, agent *sto
 func (d *HTTPAgentDispatcher) applyBrokerResponse(agent *store.Agent, resp *RemoteAgentResponse) {
 	if resp.Agent != nil {
 		if d.debug {
-			slog.Debug("applyBrokerResponse: applying broker status",
+			slog.Debug("applyBrokerResponse: applying broker phase",
 				"agentName", agent.Name,
-				"previousStatus", agent.Status,
-				"brokerStatus", resp.Agent.Status,
+				"previousPhase", agent.Phase,
+				"brokerPhase", resp.Agent.Phase,
 				"containerStatus", resp.Agent.ContainerStatus,
 				"brokerAgentID", resp.Agent.ID,
 			)
 		}
-		agent.Status = resp.Agent.Status
+		if resp.Agent.Phase != "" {
+			agent.Phase = resp.Agent.Phase
+		}
+		if resp.Agent.Activity != "" {
+			agent.Activity = resp.Agent.Activity
+		}
 		agent.ContainerStatus = resp.Agent.ContainerStatus
 		if resp.Agent.ID != "" {
 			agent.RuntimeState = "container:" + resp.Agent.ID

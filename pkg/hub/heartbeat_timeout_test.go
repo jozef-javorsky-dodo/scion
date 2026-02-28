@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/ptone/scion-agent/pkg/store/sqlite"
 )
@@ -98,7 +99,7 @@ func TestAgentHeartbeatTimeoutHandler_MarksStaleAgents(t *testing.T) {
 		Name:       "Stale Runner",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusPending,
+		Phase: string(state.PhaseCreated),
 		Visibility: store.VisibilityPrivate,
 	}
 	if err := s.CreateAgent(ctx, staleAgent); err != nil {
@@ -107,7 +108,7 @@ func TestAgentHeartbeatTimeoutHandler_MarksStaleAgents(t *testing.T) {
 
 	// Set it to running (UpdateAgentStatus sets last_seen = now)
 	if err := s.UpdateAgentStatus(ctx, staleAgent.ID, store.AgentStatusUpdate{
-		Status: store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}); err != nil {
 		t.Fatalf("failed to update agent status: %v", err)
 	}
@@ -119,7 +120,7 @@ func TestAgentHeartbeatTimeoutHandler_MarksStaleAgents(t *testing.T) {
 		Name:       "Stopped Agent",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		Visibility: store.VisibilityPrivate,
 	}
 	if err := s.CreateAgent(ctx, stoppedAgent); err != nil {
@@ -147,8 +148,8 @@ func TestAgentHeartbeatTimeoutHandler_MarksStaleAgents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get agent: %v", err)
 	}
-	if a.Status != store.AgentStatusRunning {
-		t.Errorf("agent status = %q, want %q (agent should not be stale yet)", a.Status, store.AgentStatusRunning)
+	if a.Phase != string(state.PhaseRunning) {
+		t.Errorf("agent status = %q, want %q (agent should not be stale yet)", a.Phase, string(state.PhaseRunning))
 	}
 }
 
@@ -187,7 +188,7 @@ func TestAgentHeartbeatTimeoutHandler_ClearedBySubsequentHeartbeat(t *testing.T)
 		Name:       "Recovery Agent",
 		Template:   "claude",
 		GroveID:    grove.ID,
-		Status:     store.AgentStatusUndetermined,
+		Phase: string(state.PhaseRunning), Activity: string(state.ActivityOffline),
 		Visibility: store.VisibilityPrivate,
 	}
 	if err := s.CreateAgent(ctx, agent); err != nil {
@@ -197,7 +198,7 @@ func TestAgentHeartbeatTimeoutHandler_ClearedBySubsequentHeartbeat(t *testing.T)
 	// Simulate a heartbeat arriving — normal UpdateAgentStatus with a new status
 	// clears undetermined without any special logic.
 	if err := s.UpdateAgentStatus(ctx, agent.ID, store.AgentStatusUpdate{
-		Status:    store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		Heartbeat: true,
 	}); err != nil {
 		t.Fatalf("failed to update agent heartbeat: %v", err)
@@ -208,16 +209,16 @@ func TestAgentHeartbeatTimeoutHandler_ClearedBySubsequentHeartbeat(t *testing.T)
 	if err != nil {
 		t.Fatalf("failed to get agent: %v", err)
 	}
-	if a.Status != store.AgentStatusRunning {
-		t.Errorf("agent status after heartbeat = %q, want %q", a.Status, store.AgentStatusRunning)
+	if a.Phase != string(state.PhaseRunning) {
+		t.Errorf("agent status after heartbeat = %q, want %q", a.Phase, string(state.PhaseRunning))
 	}
 }
 
 func TestAgentHeartbeatTimeoutHandler_SchedulerIntegration(t *testing.T) {
-	srv, _, _ := setupHeartbeatTestServer(t)
+	srv, s, _ := setupHeartbeatTestServer(t)
 
 	// Verify the handler can be registered and runs without panic
-	scheduler := NewScheduler(nil)
+	scheduler := NewScheduler(s)
 	scheduler.tickInterval = 50 * time.Millisecond
 
 	scheduler.RegisterRecurring("agent-heartbeat-timeout", 1, srv.agentHeartbeatTimeoutHandler())

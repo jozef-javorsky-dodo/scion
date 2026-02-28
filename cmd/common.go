@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/apiclient"
 	"github.com/ptone/scion-agent/pkg/config"
@@ -548,7 +549,7 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 	if debugMode {
 		util.Debugf("[env-gather] startAgentViaHub: Hub returned successfully")
 		if resp.Agent != nil {
-			util.Debugf("[env-gather]   agent id=%s slug=%s status=%s", resp.Agent.ID, resp.Agent.Slug, resp.Agent.Status)
+			util.Debugf("[env-gather]   agent id=%s slug=%s phase/status=%s", resp.Agent.ID, resp.Agent.Slug, resp.Agent.Status)
 			if resp.Agent.RuntimeBrokerName != "" {
 				util.Debugf("[env-gather]   broker=%s (id=%s)", resp.Agent.RuntimeBrokerName, resp.Agent.RuntimeBrokerID)
 			}
@@ -654,7 +655,8 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 				if err != nil {
 					continue
 				}
-				if agent.Status == "running" {
+				agentPhase, _ := hubStatusToPhaseActivity(agent.Status)
+				if agentPhase == string(state.PhaseRunning) {
 					statusf("Agent '%s' started via Hub.\n", agentName)
 					if !attach {
 						return nil
@@ -671,8 +673,8 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 					statusf("Attaching to agent '%s' via Hub...\n", agentName)
 					return wsclient.AttachToAgent(context.Background(), hubCtx.Endpoint, token, agentID)
 				}
-				if agent.Status == "error" || agent.Status == "stopped" {
-					return fmt.Errorf("agent '%s' failed to start (status: %s)", agentName, agent.Status)
+				if agentPhase == string(state.PhaseError) || agentPhase == string(state.PhaseStopped) {
+					return fmt.Errorf("agent '%s' failed to start (phase: %s)", agentName, agentPhase)
 				}
 			}
 		}
@@ -694,7 +696,11 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 		}
 		if resp.Agent != nil {
 			result.Details["slug"] = resp.Agent.Slug
-			result.Details["status"] = resp.Agent.Status
+			phase, activity := hubStatusToPhaseActivity(resp.Agent.Status)
+			result.Details["phase"] = phase
+			if activity != "" {
+				result.Details["activity"] = activity
+			}
 			if resp.Agent.RuntimeBrokerID != "" {
 				result.Details["runtimeBrokerId"] = resp.Agent.RuntimeBrokerID
 			}
@@ -705,7 +711,8 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 	statusf("Agent '%s' %s via Hub.\n", agentName, displayStatus)
 	if resp.Agent != nil {
 		statusf("Agent Slug: %s\n", resp.Agent.Slug)
-		statusf("Status: %s\n", resp.Agent.Status)
+		phase, _ := hubStatusToPhaseActivity(resp.Agent.Status)
+		statusf("Phase: %s\n", phase)
 	}
 	for _, w := range resp.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
@@ -741,19 +748,20 @@ func startAgentViaHub(hubCtx *HubContext, agentName, task string, resume bool) e
 			if err != nil {
 				continue // Retry on transient errors
 			}
-			if agent.Status == "running" {
+			agentPhase, _ := hubStatusToPhaseActivity(agent.Status)
+			if agentPhase == string(state.PhaseRunning) {
 				// Use the agent's ID from the latest fetch
 				if agent.ID != "" {
 					agentID = agent.ID
 				}
 				goto ready
 			}
-			if agent.Status == "error" || agent.Status == "failed" || agent.Status == "stopped" {
+			if agentPhase == string(state.PhaseError) || agentPhase == string(state.PhaseStopped) {
 				statusInfo := agent.Status
 				if agent.ContainerStatus != "" {
 					statusInfo += fmt.Sprintf(", container: %s", agent.ContainerStatus)
 				}
-				return fmt.Errorf("agent '%s' failed to start (status: %s)", agentName, statusInfo)
+				return fmt.Errorf("agent '%s' failed to start (phase: %s)", agentName, statusInfo)
 			}
 		}
 	}

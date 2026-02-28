@@ -44,7 +44,7 @@ func (m *mockManager) Start(ctx context.Context, opts api.StartOptions) (*api.Ag
 	agent := &api.AgentInfo{
 		ID:     "test-container-id",
 		Name:   opts.Name,
-		Status: "running",
+		Phase: "running",
 	}
 	m.agents = append(m.agents, *agent)
 	return agent, nil
@@ -80,13 +80,13 @@ func newTestServer() *Server {
 			{
 				ID:              "container-1",
 				Name:            "test-agent-1",
-				Status:          "running",
+				Phase:           "running",
 				ContainerStatus: "Up 1 hour",
 			},
 			{
 				ID:              "container-2",
 				Name:            "test-agent-2",
-				Status:          "stopped",
+				Phase:           "stopped",
 				ContainerStatus: "Exited",
 			},
 		},

@@ -314,12 +314,10 @@ func AgentInfoToResponse(info api.AgentInfo) AgentResponse {
 			Activity: state.Activity(activity),
 		}
 		status = as.DisplayStatus()
-	} else if info.Status != "" {
-		status = info.Status
-		// Legacy: infer phase from status for backward compat
-		if state.Phase(info.Status).IsValid() {
-			phase = info.Status
-		}
+	} else if info.Phase != "" {
+		// Phase already set on info, use it
+		phase = info.Phase
+		status = info.Phase
 	} else {
 		// Legacy fallback: derive phase and status from container status
 		switch {

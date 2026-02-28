@@ -41,7 +41,7 @@ func TestListEnrichesTemplateAndHarnessFromAgentInfo(t *testing.T) {
 		Name:          agentName,
 		Template:      "my-template",
 		HarnessConfig: "claude",
-		Status:        "running",
+		Phase:         "running",
 		Runtime:       "docker",
 	}
 	infoData, _ := json.MarshalIndent(info, "", "  ")
@@ -94,8 +94,8 @@ func TestListEnrichesTemplateAndHarnessFromAgentInfo(t *testing.T) {
 	if found.HarnessConfig != "claude" {
 		t.Errorf("HarnessConfig = %q, want %q", found.HarnessConfig, "claude")
 	}
-	if found.Status != "running" {
-		t.Errorf("Status = %q, want %q", found.Status, "running")
+	if found.Phase != "running" {
+		t.Errorf("Phase = %q, want %q", found.Phase, "running")
 	}
 }
 
@@ -114,7 +114,7 @@ func TestListDoesNotOverrideRuntimeTemplate(t *testing.T) {
 		Name:          agentName,
 		Template:      "from-info-json",
 		HarnessConfig: "claude",
-		Status:        "running",
+		Phase:         "running",
 	}
 	infoData, _ := json.MarshalIndent(info, "", "  ")
 	if err := os.WriteFile(filepath.Join(agentHome, "agent-info.json"), infoData, 0644); err != nil {
@@ -170,7 +170,7 @@ func TestListSetsLastSeenFromAgentInfoMtime(t *testing.T) {
 
 	info := api.AgentInfo{
 		Name:   agentName,
-		Status: "running",
+		Phase: "running",
 	}
 	infoData, _ := json.MarshalIndent(info, "", "  ")
 	infoPath := filepath.Join(agentHome, "agent-info.json")
@@ -232,7 +232,7 @@ func TestListNonRunningAgentIncludesHarnessConfig(t *testing.T) {
 		Name:          agentName,
 		Template:      "research",
 		HarnessConfig: "gemini",
-		Status:        "stopped",
+		Phase:         "stopped",
 	}
 	infoData, _ := json.MarshalIndent(info, "", "  ")
 	infoPath := filepath.Join(agentHome, "agent-info.json")

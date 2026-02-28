@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
@@ -48,7 +49,7 @@ func createTestGroveAndAgent(t *testing.T, s *SQLiteStore) (groveID, agentID str
 		Slug:       "notif-agent-" + agentID[:8],
 		Name:       "Notification Test Agent",
 		GroveID:    groveID,
-		Status:     store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		Visibility: store.VisibilityPrivate,
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))

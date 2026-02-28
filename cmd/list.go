@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/agentcache"
 	"github.com/ptone/scion-agent/pkg/api"
 	"github.com/ptone/scion-agent/pkg/config"
@@ -187,6 +188,10 @@ func enrichAgentsClientSide(ctx context.Context, client hubclient.Client, agents
 
 // hubAgentToAgentInfo converts a Hub API Agent to a local AgentInfo
 func hubAgentToAgentInfo(a hubclient.Agent) api.AgentInfo {
+	// Map hubclient.Agent.Status to Phase/Activity for api.AgentInfo.
+	// The Hub API returns a single Status field; we derive Phase and Activity from it.
+	phase, activity := hubStatusToPhaseActivity(a.Status)
+
 	info := api.AgentInfo{
 		ID:                a.ID,
 		Slug:              a.Slug,
@@ -198,7 +203,8 @@ func hubAgentToAgentInfo(a hubclient.Agent) api.AgentInfo {
 		GroveID:           a.GroveID,
 		Labels:            a.Labels,
 		Annotations:       a.Annotations,
-		Status:            a.Status,
+		Phase:             phase,
+		Activity:          activity,
 		ContainerStatus:   a.ContainerStatus,
 		Image:             a.Image,
 		Detached:          a.Detached,
@@ -272,7 +278,11 @@ func displayAgents(agents []api.AgentInfo, all bool, hubMode bool) error {
 		fmt.Fprintln(w, "NAME\tTEMPLATE\tHARNESS-CFG\tRUNTIME\tGROVE\tSTATUS\tCONTAINER\tLAST EVENT")
 	}
 	for _, a := range agents {
-		agentStatus := a.Status
+		// Display: if phase is running and activity is set, show activity; otherwise show phase.
+		agentStatus := a.Phase
+		if agentStatus == string(state.PhaseRunning) && a.Activity != "" {
+			agentStatus = a.Activity
+		}
 		if agentStatus == "" {
 			agentStatus = "IDLE"
 		}
@@ -446,6 +456,27 @@ func containsStr(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// hubStatusToPhaseActivity maps a hubclient Status string to Phase and Activity.
+// The Hub API may return a single Status field that represents either a phase
+// or an activity (e.g. "running", "stopped", "waiting_for_input").
+func hubStatusToPhaseActivity(status string) (string, string) {
+	// Check if the status is a known activity (only valid during running phase)
+	a := state.Activity(status)
+	if a.IsValid() && a != "" {
+		return string(state.PhaseRunning), status
+	}
+	// Check if it is a known phase
+	p := state.Phase(status)
+	if p.IsValid() {
+		return status, ""
+	}
+	// Unknown value — treat as phase for backward compat
+	if status == "" {
+		return "", ""
+	}
+	return status, ""
 }
 
 // updateAgentNameCache updates the agent name cache with the given Hub agents.

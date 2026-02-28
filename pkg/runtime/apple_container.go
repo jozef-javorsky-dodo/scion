@@ -197,7 +197,7 @@ func (r *AppleContainerRuntime) List(ctx context.Context, labelFilter map[string
 			Labels:          c.Configuration.Labels,
 			Annotations:     c.Configuration.Labels,
 			ContainerStatus: c.Status,
-			Status:          "created", // Default status, updated by AgentManager logic
+			Phase:           "created", // Default phase, updated by AgentManager logic
 			Image:           c.Configuration.Image.Reference,
 			Runtime:         r.Name(),
 		})

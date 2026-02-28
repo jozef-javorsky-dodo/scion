@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -344,7 +345,7 @@ func TestDeleteGrove_DeleteAgents_DispatchesToBroker(t *testing.T) {
 		Name:            "Agent Online grove-del 2",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-online-grove-del",
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent2))
 

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/ptone/scion-agent/pkg/store/sqlite"
 )
@@ -83,7 +84,7 @@ func (m *mockRuntimeBrokerClient) CreateAgent(ctx context.Context, brokerID, bro
 			ContainerID:     "container-123",
 			Slug:            req.Slug,
 			Name:            req.Name,
-			Status:          "running",
+			Phase:           string(state.PhaseRunning),
 			ContainerStatus: "Up 5 seconds",
 		},
 		Created: true,
@@ -109,7 +110,7 @@ func (m *mockRuntimeBrokerClient) StartAgent(ctx context.Context, brokerID, brok
 		Agent: &RemoteAgentInfo{
 			ID:              agentID,
 			Name:            agentID,
-			Status:          "running",
+			Phase:           string(state.PhaseRunning),
 			ContainerStatus: "Up 5 seconds",
 		},
 	}, nil
@@ -157,7 +158,7 @@ func (m *mockRuntimeBrokerClient) CheckAgentPrompt(ctx context.Context, brokerID
 
 func (m *mockRuntimeBrokerClient) FinalizeEnv(ctx context.Context, brokerID, brokerEndpoint, agentID string, env map[string]string) (*RemoteAgentResponse, error) {
 	return &RemoteAgentResponse{
-		Agent: &RemoteAgentInfo{ID: agentID, Name: agentID, Status: "running"},
+		Agent: &RemoteAgentInfo{ID: agentID, Name: agentID, Phase: string(state.PhaseRunning)},
 	}, m.returnErr
 }
 
@@ -180,10 +181,10 @@ func (m *mockRuntimeBrokerClient) CreateAgentWithGather(ctx context.Context, bro
 	}
 	return &RemoteAgentResponse{
 		Agent: &RemoteAgentInfo{
-			ID:     req.ID,
-			Slug:   req.Slug,
-			Name:   req.Name,
-			Status: "running",
+			ID:    req.ID,
+			Slug:  req.Slug,
+			Name:  req.Name,
+			Phase: string(state.PhaseRunning),
 		},
 		Created: true,
 	}, nil, nil
@@ -371,7 +372,7 @@ func TestHTTPRuntimeBrokerClient_CreateAgent(t *testing.T) {
 				ContainerID:     "container-123",
 				Slug:            req.Slug,
 				Name:            req.Name,
-				Status:          "running",
+				Phase:           "running",
 				ContainerStatus: "Up 5 seconds",
 			},
 			Created: true,
@@ -492,11 +493,14 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_WithGroveProviderPath(t *testin
 	ctx := context.Background()
 	memStore := createTestStore(t)
 
-	// Create the grove (required by FK constraint)
+	// Create the grove with a GitRemote so it is treated as a linked grove
+	// (not hub-native). This ensures buildCreateRequest looks up the
+	// provider's LocalPath instead of sending a groveSlug.
 	grove := &store.Grove{
-		ID:   "grove-1",
-		Name: "test-grove",
-		Slug: "test-grove",
+		ID:        "grove-1",
+		Name:      "test-grove",
+		Slug:      "test-grove",
+		GitRemote: "https://github.com/example/repo.git",
 	}
 	if err := memStore.CreateGrove(ctx, grove); err != nil {
 		t.Fatalf("failed to create grove: %v", err)
@@ -921,11 +925,12 @@ func TestHTTPAgentDispatcher_DispatchAgentStart_WithGroveProviderPath(t *testing
 	ctx := context.Background()
 	memStore := createTestStore(t)
 
-	// Create the grove
+	// Create the grove with a GitRemote so it is treated as a linked grove
 	grove := &store.Grove{
-		ID:   "grove-1",
-		Name: "test-grove",
-		Slug: "test-grove",
+		ID:        "grove-1",
+		Name:      "test-grove",
+		Slug:      "test-grove",
+		GitRemote: "https://github.com/example/repo.git",
 	}
 	if err := memStore.CreateGrove(ctx, grove); err != nil {
 		t.Fatalf("failed to create grove: %v", err)
@@ -982,8 +987,8 @@ func TestHTTPAgentDispatcher_DispatchAgentStart_WithGroveProviderPath(t *testing
 	}
 
 	// Verify broker response was applied to the agent
-	if agent.Status != "running" {
-		t.Errorf("expected agent status 'running', got '%s'", agent.Status)
+	if agent.Phase != "running" {
+		t.Errorf("expected agent status 'running', got '%s'", agent.Phase)
 	}
 	// With a local provider path, groveSlug should not be set
 	if mockClient.lastGroveSlug != "" {
@@ -1424,7 +1429,7 @@ func TestHTTPAgentDispatcher_DispatchAgentStart_AppliesBrokerResponse(t *testing
 			Agent: &RemoteAgentInfo{
 				ID:              "container-abc",
 				Name:            "test-agent",
-				Status:          "running",
+				Phase:           string(state.PhaseRunning),
 				ContainerStatus: "Up 10 seconds",
 				Template:        "claude",
 				Runtime:         "docker",
@@ -1439,7 +1444,7 @@ func TestHTTPAgentDispatcher_DispatchAgentStart_AppliesBrokerResponse(t *testing
 		Slug:            "test-agent",
 		GroveID:         "grove-1",
 		RuntimeBrokerID: "broker-1",
-		Status:          store.AgentStatusCreated,
+		Phase:           string(state.PhaseCreated),
 	}
 
 	err := dispatcher.DispatchAgentStart(ctx, agent, "")
@@ -1448,8 +1453,8 @@ func TestHTTPAgentDispatcher_DispatchAgentStart_AppliesBrokerResponse(t *testing
 	}
 
 	// Verify broker response fields were applied
-	if agent.Status != "running" {
-		t.Errorf("expected status 'running', got '%s'", agent.Status)
+	if agent.Phase != "running" {
+		t.Errorf("expected status 'running', got '%s'", agent.Phase)
 	}
 	if agent.ContainerStatus != "Up 10 seconds" {
 		t.Errorf("expected containerStatus 'Up 10 seconds', got '%s'", agent.ContainerStatus)
@@ -1732,13 +1737,13 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_NoGroveSlug_LocalPathGrove(t *t
 	ctx := context.Background()
 	memStore := createTestStore(t)
 
-	// Create a non-git grove (no GitRemote) that has a local provider path.
-	// This is a local grove registered with the Hub, NOT a hub-native grove.
+	// Create a linked grove with a local provider path.
+	// This grove has a GitRemote so it is treated as a linked grove (not hub-native).
 	grove := &store.Grove{
-		ID:   "grove-local",
-		Name: "Local Grove",
-		Slug: "local-grove",
-		// No GitRemote — but this is NOT hub-native because the broker has a local path
+		ID:        "grove-local",
+		Name:      "Local Grove",
+		Slug:      "local-grove",
+		GitRemote: "https://github.com/example/local-project.git",
 	}
 	if err := memStore.CreateGrove(ctx, grove); err != nil {
 		t.Fatalf("failed to create grove: %v", err)

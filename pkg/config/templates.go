@@ -683,8 +683,11 @@ func MergeScionConfig(base, override *api.ScionConfig) *api.ScionConfig {
 			if override.Info.ContainerStatus != "" {
 				infoCopy.ContainerStatus = override.Info.ContainerStatus
 			}
-			if override.Info.Status != "" {
-				infoCopy.Status = override.Info.Status
+			if override.Info.Phase != "" {
+				infoCopy.Phase = override.Info.Phase
+			}
+			if override.Info.Activity != "" {
+				infoCopy.Activity = override.Info.Activity
 			}
 			if override.Info.Image != "" {
 				infoCopy.Image = override.Info.Image

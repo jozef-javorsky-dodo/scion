@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,7 +157,7 @@ func TestEvaluateEndpoint_AgentPolicy(t *testing.T) {
 	}))
 	require.NoError(t, s.CreateAgent(ctx, &store.Agent{
 		ID: "agent-eval", Slug: "agent-eval", Name: "Eval Agent",
-		GroveID: "grove-eval", Status: store.AgentStatusRunning,
+		GroveID: "grove-eval", Phase: string(state.PhaseRunning),
 	}))
 
 	// Create and bind policy to agent
@@ -193,7 +194,7 @@ func TestEvaluateEndpoint_AgentBinding(t *testing.T) {
 	}))
 	require.NoError(t, s.CreateAgent(ctx, &store.Agent{
 		ID: "agent-bind", Slug: "agent-bind", Name: "Bind Agent",
-		GroveID: "grove-bind", Status: store.AgentStatusRunning,
+		GroveID: "grove-bind", Phase: string(state.PhaseRunning),
 	}))
 
 	// Create policy via API

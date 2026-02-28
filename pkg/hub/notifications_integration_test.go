@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -142,6 +143,7 @@ func (env *integrationTestEnv) createAgentWithNotify(t *testing.T, callingAgent 
 
 // updateStatusViaAPI updates an agent's status through the HTTP API,
 // which triggers an event publication through the event publisher.
+// The status parameter is mapped to Activity (for activity-like values) or Phase.
 func (env *integrationTestEnv) updateStatusViaAPI(t *testing.T, agentID, status, message, taskSummary string) {
 	t.Helper()
 
@@ -150,10 +152,17 @@ func (env *integrationTestEnv) updateStatusViaAPI(t *testing.T, agentID, status,
 	})
 	require.NoError(t, err)
 
+	// Map status string to the appropriate field
 	statusUpdate := store.AgentStatusUpdate{
-		Status:  status,
-		Message: message,
+		Message:     message,
 		TaskSummary: taskSummary,
+	}
+	switch status {
+	case "running", "stopped", "error", "provisioning", "created":
+		statusUpdate.Phase = status
+	default:
+		// Activities: completed, waiting_for_input, idle, limits_exceeded, etc.
+		statusUpdate.Activity = status
 	}
 	body, _ := json.Marshal(statusUpdate)
 
@@ -180,7 +189,7 @@ func TestIntegration_AgentCreatesAgentWithNotify_FullFlow(t *testing.T) {
 		Slug:            "parent-agent",
 		Name:            "Parent Agent",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -236,7 +245,7 @@ func TestIntegration_AgentCreatesAgentWithNotify_WaitingForInput(t *testing.T) {
 		Slug:            "parent-agent-wfi",
 		Name:            "Parent Agent WFI",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -284,7 +293,7 @@ func TestIntegration_AgentCreatesAgentWithNotify_MultipleStatusChanges(t *testin
 		Slug:            "parent-multi",
 		Name:            "Parent Multi",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -342,7 +351,7 @@ func TestIntegration_StatusNormalization_LowercaseEventMatchesUppercaseTrigger(t
 		Slug:            "parent-case",
 		Name:            "Parent Case",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -379,7 +388,7 @@ func TestIntegration_StatusNormalization_DedupAcrossCaseBoundaries(t *testing.T)
 		Slug:            "parent-dedup",
 		Name:            "Parent Dedup",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -420,7 +429,7 @@ func TestIntegration_StatusNormalization_NonTriggerStatusNoNotification(t *testi
 		Slug:            "parent-nontrig",
 		Name:            "Parent NonTrig",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -470,7 +479,7 @@ func TestIntegration_SubscriptionCleanup_HardDeleteCascades(t *testing.T) {
 		Slug:            "parent-hdel",
 		Name:            "Parent Hard Delete",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -522,7 +531,7 @@ func TestIntegration_SubscriptionCleanup_SoftDeleteRetainsSubscriptions(t *testi
 		Slug:            "parent-sdel",
 		Name:            "Parent Soft Delete",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -542,10 +551,10 @@ func TestIntegration_SubscriptionCleanup_SoftDeleteRetainsSubscriptions(t *testi
 	rec := doRequest(t, env.srv, http.MethodDelete, "/api/v1/agents/"+child.ID, nil)
 	require.Equal(t, http.StatusNoContent, rec.Code)
 
-	// Verify the agent is soft-deleted (status=deleted but record still exists)
+	// Verify the agent is soft-deleted (DeletedAt is set but record still exists)
 	agent, err := env.store.GetAgent(ctx, child.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.AgentStatusDeleted, agent.Status)
+	assert.False(t, agent.DeletedAt.IsZero(), "soft-deleted agent should have non-zero DeletedAt")
 
 	// Subscriptions should still exist for soft-deleted agents
 	subs, err := env.store.GetNotificationSubscriptions(ctx, child.ID)
@@ -735,7 +744,7 @@ func TestIntegration_MultipleSubscribers_AgentAndUser(t *testing.T) {
 		Slug:            "parent-multi-sub",
 		Name:            "Parent Multi Sub",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}
@@ -796,7 +805,7 @@ func TestIntegration_NoNotifyFlag_NoSubscription(t *testing.T) {
 		Slug:            "parent-no-notify",
 		Name:            "Parent No Notify",
 		GroveID:         env.grove.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		RuntimeBrokerID: env.broker.ID,
 		Visibility:      store.VisibilityPrivate,
 	}

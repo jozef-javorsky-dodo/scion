@@ -77,10 +77,10 @@ func TestAgentInfoToResponse(t *testing.T) {
 			expectedReady:    true,
 		},
 		{
-			name: "legacy status already set passes through unchanged",
+			name: "phase already set passes through unchanged",
 			info: api.AgentInfo{
 				Name:            "agent-1",
-				Status:          "running",
+				Phase:           "running",
 				ContainerStatus: "created", // should be ignored
 			},
 			expectedStatus:   "running",
@@ -89,14 +89,14 @@ func TestAgentInfoToResponse(t *testing.T) {
 			expectedReady:    true,
 		},
 		{
-			name: "legacy status set to non-running value",
+			name: "phase set to non-running value",
 			info: api.AgentInfo{
 				Name:            "agent-2",
-				Status:          "resumed",
+				Phase:           "stopped",
 				ContainerStatus: "Up 5 minutes",
 			},
-			expectedStatus:   "resumed",
-			expectedPhase:    "",
+			expectedStatus:   "stopped",
+			expectedPhase:    "stopped",
 			expectedActivity: "",
 			expectedReady:    false,
 		},
@@ -189,7 +189,7 @@ func TestAgentInfoToResponse(t *testing.T) {
 func TestAgentInfoToResponseHarnessConfig(t *testing.T) {
 	info := api.AgentInfo{
 		Name:          "agent-harness",
-		Status:        "running",
+		Phase:         "running",
 		Template:      "default",
 		HarnessConfig: "gemini",
 	}

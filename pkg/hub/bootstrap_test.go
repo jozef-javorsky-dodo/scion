@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/storage"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/ptone/scion-agent/pkg/store/sqlite"
 	"github.com/ptone/scion-agent/pkg/transfer"
@@ -113,7 +114,7 @@ func (d *mockDispatcher) DispatchAgentCreate(_ context.Context, agent *store.Age
 		return d.returnErr
 	}
 	d.dispatchedAgents = append(d.dispatchedAgents, agent)
-	agent.Status = store.AgentStatusProvisioning
+	agent.Phase = string(state.PhaseProvisioning)
 	return nil
 }
 
@@ -122,7 +123,7 @@ func (d *mockDispatcher) DispatchAgentProvision(_ context.Context, agent *store.
 		return d.returnErr
 	}
 	d.dispatchedAgents = append(d.dispatchedAgents, agent)
-	agent.Status = store.AgentStatusCreated
+	agent.Phase = string(state.PhaseCreated)
 	return nil
 }
 func (d *mockDispatcher) DispatchAgentStart(_ context.Context, agent *store.Agent, _ string) error {
@@ -275,8 +276,8 @@ func TestCreateAgentWithWorkspaceBootstrap(t *testing.T) {
 	}
 
 	// Agent should be in provisioning status (not dispatched yet)
-	if resp.Agent.Status != store.AgentStatusProvisioning {
-		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseProvisioning) {
+		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Phase)
 	}
 
 	// Upload URLs should be populated
@@ -435,8 +436,8 @@ func TestCreateAgentWithWorkspaceBootstrap_NoTask(t *testing.T) {
 
 	// Agent is dispatched via DispatchAgentCreate (ProvisionOnly is false).
 	// The mock dispatcher doesn't set a status, so it falls back to provisioning.
-	if resp.Agent.Status != store.AgentStatusProvisioning {
-		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseProvisioning) {
+		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Phase)
 	}
 
 	// No upload URLs since no task was provided
@@ -523,8 +524,8 @@ func TestCreateAgentWithWorkspaceBootstrap_LocalProvider(t *testing.T) {
 	}
 
 	// Agent should be in provisioning status (dispatched directly)
-	if resp.Agent.Status != store.AgentStatusProvisioning {
-		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseProvisioning) {
+		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Phase)
 	}
 
 	// Dispatcher should have been called (direct dispatch, no finalize needed)
@@ -567,8 +568,8 @@ func TestCreateAgentWithoutBootstrap(t *testing.T) {
 	}
 
 	// Agent should be provisioning (dispatched normally)
-	if resp.Agent.Status != store.AgentStatusProvisioning {
-		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Status)
+	if resp.Agent.Phase != string(state.PhaseProvisioning) {
+		t.Errorf("expected status 'provisioning', got %q", resp.Agent.Phase)
 	}
 }
 
@@ -595,8 +596,8 @@ func TestCreateThenStartWithTask(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&createResp); err != nil {
 		t.Fatalf("failed to decode create response: %v", err)
 	}
-	if createResp.Agent.Status != store.AgentStatusCreated {
-		t.Fatalf("expected status 'created', got %q", createResp.Agent.Status)
+	if createResp.Agent.Phase != string(state.PhaseCreated) {
+		t.Fatalf("expected status 'created', got %q", createResp.Agent.Phase)
 	}
 
 	// Step 2: Start the agent with a task (this previously returned 409)
@@ -619,8 +620,8 @@ func TestCreateThenStartWithTask(t *testing.T) {
 	if startResp.Agent.ID != createResp.Agent.ID {
 		t.Errorf("expected same agent ID %q, got %q", createResp.Agent.ID, startResp.Agent.ID)
 	}
-	if startResp.Agent.Status != store.AgentStatusRunning {
-		t.Errorf("expected status 'running', got %q", startResp.Agent.Status)
+	if startResp.Agent.Phase != string(state.PhaseRunning) {
+		t.Errorf("expected status 'running', got %q", startResp.Agent.Phase)
 	}
 
 	// Dispatcher should have received a start call
@@ -662,8 +663,8 @@ func TestCreateThenStartWithoutTask(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&startResp); err != nil {
 		t.Fatalf("failed to decode start response: %v", err)
 	}
-	if startResp.Agent.Status != store.AgentStatusRunning {
-		t.Errorf("expected status 'running', got %q", startResp.Agent.Status)
+	if startResp.Agent.Phase != string(state.PhaseRunning) {
+		t.Errorf("expected status 'running', got %q", startResp.Agent.Phase)
 	}
 
 	// Dispatcher should have received a start call
@@ -688,7 +689,7 @@ func TestSyncToFinalize_BootstrapMode(t *testing.T) {
 		Name:            "Bootstrap Finalize",
 		GroveID:         groveID,
 		RuntimeBrokerID: "broker_bootstrap_test",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 		Visibility:      store.VisibilityPrivate,
 		AppliedConfig: &store.AgentAppliedConfig{
 			Task: "test task",
@@ -774,7 +775,7 @@ func TestSyncToFinalize_BootstrapMode_MissingFile(t *testing.T) {
 		Name:            "Bootstrap Missing",
 		GroveID:         groveID,
 		RuntimeBrokerID: "broker_bootstrap_test",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 		Visibility:      store.VisibilityPrivate,
 	}
 	if err := s.CreateAgent(ctx, agent); err != nil {
@@ -818,7 +819,7 @@ func TestSyncToFinalize_RejectsStoppedAgent(t *testing.T) {
 		Name:            "Bootstrap Stopped",
 		GroveID:         groveID,
 		RuntimeBrokerID: "broker_bootstrap_test",
-		Status:          store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		Visibility:      store.VisibilityPrivate,
 	}
 	if err := s.CreateAgent(ctx, agent); err != nil {
@@ -865,7 +866,7 @@ func TestSyncToFinalize_BootstrapMode_NoDispatcher(t *testing.T) {
 		Name:            "Bootstrap No Dispatcher",
 		GroveID:         groveID,
 		RuntimeBrokerID: "broker_bootstrap_test",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 		Visibility:      store.VisibilityPrivate,
 	}
 	if err := s.CreateAgent(ctx, agent); err != nil {
@@ -903,7 +904,7 @@ func TestDispatcherPassesWorkspaceStoragePath(t *testing.T) {
 		Name:            "Storage Path Agent",
 		GroveID:         "grove_test",
 		RuntimeBrokerID: "broker_test",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 		AppliedConfig: &store.AgentAppliedConfig{
 			Task:                 "test task",
 			WorkspaceStoragePath: "workspaces/grove_test/agent_with_storage_path",

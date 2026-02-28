@@ -39,7 +39,6 @@ type Agent struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 
 	// Status
-	Status          string `json:"status"`                    // provisioning, running, stopped, error, busy, idle, waiting_for_input, completed
 	Phase           string `json:"phase,omitempty"`           // Lifecycle phase (from state.Phase)
 	Activity        string `json:"activity,omitempty"`        // Runtime activity (from state.Activity)
 	ToolName        string `json:"toolName,omitempty"`        // Tool name when activity=executing
@@ -108,25 +107,6 @@ type AgentAppliedConfig struct {
 	WorkspaceStoragePath string `json:"workspaceStoragePath,omitempty"`
 }
 
-// AgentStatus constants
-const (
-	AgentStatusCreated         = "created"
-	AgentStatusCloning         = "cloning"
-	AgentStatusProvisioning    = "provisioning"
-	AgentStatusRunning         = "running"
-	AgentStatusStopped         = "stopped"
-	AgentStatusError           = "error"
-	AgentStatusPending         = "pending"
-	AgentStatusBusy            = "busy"
-	AgentStatusIdle            = "idle"
-	AgentStatusWaitingForInput = "waiting_for_input"
-	AgentStatusCompleted       = "completed"
-	AgentStatusLimitsExceeded  = "limits_exceeded"
-	AgentStatusOffline         = "offline"
-	AgentStatusDeleted         = "deleted"
-	AgentStatusRestored        = "restored"
-	AgentStatusUndetermined    = "undetermined"
-)
 
 // Grove represents a project/agent group in the Hub database.
 type Grove struct {
@@ -879,7 +859,6 @@ func (a *Agent) ToAPI() *api.AgentInfo {
 		Annotations: a.Annotations,
 
 		// Status
-		Status:          a.Status,
 		Phase:           a.Phase,
 		Activity:        a.Activity,
 		ContainerStatus: a.ContainerStatus,

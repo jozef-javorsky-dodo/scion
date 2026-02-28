@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/hubclient"
 )
 
@@ -207,9 +208,12 @@ func (s *HeartbeatService) gatherGroveAgents() []hubclient.GroveHeartbeat {
 			groveID = "default"
 		}
 
+		// Compute legacy Status using DisplayStatus logic:
+		// if running with an activity, show the activity; otherwise show the phase.
+		as := state.AgentState{Phase: state.Phase(ag.Phase), Activity: state.Activity(ag.Activity)}
 		agentHB := hubclient.AgentHeartbeat{
 			Slug:            ag.Name, // Use Name as the slug identifier
-			Status:          ag.Status,
+			Status:          as.DisplayStatus(),
 			Phase:           ag.Phase,
 			Activity:        ag.Activity,
 			ContainerStatus: ag.ContainerStatus,

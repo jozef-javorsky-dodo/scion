@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -178,7 +179,7 @@ func TestDemoPolicy_AgentDelete_OwnerAllowed(t *testing.T) {
 		GroveID:      grove.ID,
 		OwnerID:      alice.ID,
 		CreatedBy:    alice.ID,
-		Status:       store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -204,7 +205,7 @@ func TestDemoPolicy_AgentDelete_NonOwnerDenied(t *testing.T) {
 		GroveID:      grove.ID,
 		OwnerID:      alice.ID,
 		CreatedBy:    alice.ID,
-		Status:       store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -239,7 +240,7 @@ func TestDemoPolicy_AgentDelete_AdminBypass(t *testing.T) {
 		GroveID:      grove.ID,
 		OwnerID:      alice.ID,
 		CreatedBy:    alice.ID,
-		Status:       store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -264,7 +265,7 @@ func TestDemoPolicy_AgentDelete_DirectPath_NonOwnerDenied(t *testing.T) {
 		GroveID:      grove.ID,
 		OwnerID:      alice.ID,
 		CreatedBy:    alice.ID,
-		Status:       store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -293,7 +294,7 @@ func TestDemoPolicy_AgentAction_OwnerAllowed(t *testing.T) {
 		GroveID:      grove.ID,
 		OwnerID:      alice.ID,
 		CreatedBy:    alice.ID,
-		Status:       store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -323,7 +324,7 @@ func TestDemoPolicy_AgentAction_NonOwnerDenied(t *testing.T) {
 		GroveID:      grove.ID,
 		OwnerID:      alice.ID,
 		CreatedBy:    alice.ID,
-		Status:       store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -362,7 +363,7 @@ func TestDemoPolicy_AgentAction_AdminBypass(t *testing.T) {
 		GroveID:      grove.ID,
 		OwnerID:      alice.ID,
 		CreatedBy:    alice.ID,
-		Status:       store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),
@@ -387,7 +388,7 @@ func TestDemoPolicy_AgentAction_DirectPath_NonOwnerDenied(t *testing.T) {
 		GroveID:      grove.ID,
 		OwnerID:      alice.ID,
 		CreatedBy:    alice.ID,
-		Status:       store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		StateVersion: 1,
 		Created:      time.Now(),
 		Updated:      time.Now(),

@@ -75,7 +75,6 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 			if data, err := os.ReadFile(agentInfoJSON); err == nil {
 				var info api.AgentInfo
 				if err := json.Unmarshal(data, &info); err == nil {
-					agents[i].Status = info.Status
 					agents[i].Phase = info.Phase
 					agents[i].Activity = info.Activity
 					if agents[i].Runtime == "" {
@@ -100,8 +99,8 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 			if data, err := os.ReadFile(scionJSON); err == nil {
 				var cfg api.ScionConfig
 				if err := json.Unmarshal(data, &cfg); err == nil && cfg.Info != nil {
-					if agents[i].Status == "" {
-						agents[i].Status = cfg.Info.Status
+					if agents[i].Phase == "" {
+						agents[i].Phase = cfg.Info.Phase
 					}
 					if agents[i].Runtime == "" {
 						agents[i].Runtime = cfg.Info.Runtime
@@ -169,7 +168,7 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 					info = &api.AgentInfo{
 						Name: e.Name(),
 						Grove: groveName,
-						Status: "unknown",
+						Phase: "unknown",
 					}
 				} else {
 					continue
@@ -184,7 +183,6 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 				GrovePath:       gp,
 				ContainerStatus: "created",
 				Image:           info.Image,
-				Status:          info.Status,
 				Phase:           info.Phase,
 				Activity:        info.Activity,
 				Runtime:         info.Runtime,
@@ -197,7 +195,7 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 			}
 
 			// Warn about stale soft-deleted agents
-			if info.Status == "deleted" && !info.DeletedAt.IsZero() {
+			if !info.DeletedAt.IsZero() {
 				agentEntry.Warnings = append(agentEntry.Warnings,
 					fmt.Sprintf("soft-deleted at %s", info.DeletedAt.Format("2006-01-02 15:04")))
 			}

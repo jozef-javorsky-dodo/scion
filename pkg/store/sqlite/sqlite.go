@@ -90,6 +90,7 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 		migrationV18,
 		migrationV19,
 		migrationV20,
+		migrationV21,
 	}
 
 	// Create migrations table if not exists
@@ -612,6 +613,30 @@ UPDATE agents SET phase = 'running', activity = 'offline' WHERE status = 'undete
 CREATE INDEX IF NOT EXISTS idx_agents_phase ON agents(phase);
 `
 
+// Migration V21: Remove legacy status column from agents table.
+// Phase 6 of the agent state refactor — the status column is superseded by
+// the phase/activity columns added in V20.
+const migrationV21 = `
+-- Backfill any remaining agents where phase was not set
+UPDATE agents SET phase = status WHERE (phase = '' OR phase IS NULL) AND status IN ('created','provisioning','cloning','starting','running','stopping','stopped','error');
+UPDATE agents SET phase = 'created' WHERE (phase = '' OR phase IS NULL) AND status = 'pending';
+UPDATE agents SET phase = 'stopped' WHERE (phase = '' OR phase IS NULL) AND status = 'deleted';
+
+-- Backfill activity from status for running agents
+UPDATE agents SET activity = status WHERE phase = 'running' AND (activity = '' OR activity IS NULL) AND status IN ('idle','waiting_for_input','completed','limits_exceeded','offline');
+UPDATE agents SET activity = 'thinking' WHERE phase = 'running' AND (activity = '' OR activity IS NULL) AND status = 'busy';
+
+-- Update soft-delete index: rely on deleted_at instead of status
+DROP INDEX IF EXISTS idx_agents_deleted;
+CREATE INDEX IF NOT EXISTS idx_agents_deleted ON agents(deleted_at) WHERE deleted_at IS NOT NULL;
+
+-- Drop the status index before dropping the column
+DROP INDEX IF EXISTS idx_agents_status;
+
+-- Drop the status column (SQLite supports this from 3.35.0+)
+ALTER TABLE agents DROP COLUMN status;
+`
+
 // Helper functions for JSON marshaling/unmarshaling
 func marshalJSON(v interface{}) string {
 	if v == nil {
@@ -663,17 +688,17 @@ func (s *SQLiteStore) CreateAgent(ctx context.Context, agent *store.Agent) error
 		INSERT INTO agents (
 			id, agent_id, name, template, grove_id,
 			labels, annotations,
-			status, phase, activity, tool_name,
+			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
 			created_at, updated_at, last_seen, deleted_at,
 			created_by, owner_id, visibility, state_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		agent.ID, agent.Slug, agent.Name, agent.Template, agent.GroveID,
 		marshalJSON(agent.Labels), marshalJSON(agent.Annotations),
-		agent.Status, agent.Phase, agent.Activity, agent.ToolName,
+		agent.Phase, agent.Activity, agent.ToolName,
 		agent.ConnectionState, agent.ContainerStatus, agent.RuntimeState,
 		agent.Image, agent.Detached, agent.Runtime, nullableString(agent.RuntimeBrokerID), agent.WebPTYEnabled, agent.TaskSummary, agent.Message,
 		marshalJSON(agent.AppliedConfig),
@@ -698,7 +723,7 @@ func (s *SQLiteStore) GetAgent(ctx context.Context, id string) (*store.Agent, er
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, agent_id, name, template, grove_id,
 			labels, annotations,
-			status, phase, activity, tool_name,
+			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
@@ -708,7 +733,7 @@ func (s *SQLiteStore) GetAgent(ctx context.Context, id string) (*store.Agent, er
 	`, id).Scan(
 		&agent.ID, &agent.Slug, &agent.Name, &agent.Template, &agent.GroveID,
 		&labels, &annotations,
-		&agent.Status, &agent.Phase, &agent.Activity, &toolName,
+		&agent.Phase, &agent.Activity, &toolName,
 		&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
 		&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 		&appliedConfig,
@@ -753,7 +778,7 @@ func (s *SQLiteStore) GetAgentBySlug(ctx context.Context, groveID, slug string) 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, agent_id, name, template, grove_id,
 			labels, annotations,
-			status, phase, activity, tool_name,
+			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
@@ -763,7 +788,7 @@ func (s *SQLiteStore) GetAgentBySlug(ctx context.Context, groveID, slug string) 
 	`, groveID, slug).Scan(
 		&agent.ID, &agent.Slug, &agent.Name, &agent.Template, &agent.GroveID,
 		&labels, &annotations,
-		&agent.Status, &agent.Phase, &agent.Activity, &toolName,
+		&agent.Phase, &agent.Activity, &toolName,
 		&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
 		&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 		&appliedConfig,
@@ -807,7 +832,7 @@ func (s *SQLiteStore) UpdateAgent(ctx context.Context, agent *store.Agent) error
 		UPDATE agents SET
 			agent_id = ?, name = ?, template = ?,
 			labels = ?, annotations = ?,
-			status = ?, phase = ?, activity = ?, tool_name = ?,
+			phase = ?, activity = ?, tool_name = ?,
 			connection_state = ?, container_status = ?, runtime_state = ?,
 			image = ?, detached = ?, runtime = ?, runtime_broker_id = ?, web_pty_enabled = ?, task_summary = ?, message = ?,
 			applied_config = ?,
@@ -817,7 +842,7 @@ func (s *SQLiteStore) UpdateAgent(ctx context.Context, agent *store.Agent) error
 	`,
 		agent.Slug, agent.Name, agent.Template,
 		marshalJSON(agent.Labels), marshalJSON(agent.Annotations),
-		agent.Status, agent.Phase, agent.Activity, agent.ToolName,
+		agent.Phase, agent.Activity, agent.ToolName,
 		agent.ConnectionState, agent.ContainerStatus, agent.RuntimeState,
 		agent.Image, agent.Detached, agent.Runtime, nullableString(agent.RuntimeBrokerID), agent.WebPTYEnabled, agent.TaskSummary, agent.Message,
 		marshalJSON(agent.AppliedConfig),
@@ -874,19 +899,18 @@ func (s *SQLiteStore) ListAgents(ctx context.Context, filter store.AgentFilter, 
 		conditions = append(conditions, "runtime_broker_id = ?")
 		args = append(args, filter.RuntimeBrokerID)
 	}
-	if filter.Status != "" {
-		conditions = append(conditions, "status = ?")
-		args = append(args, filter.Status)
+	if filter.Phase != "" {
+		conditions = append(conditions, "phase = ?")
+		args = append(args, filter.Phase)
 	}
 	if filter.OwnerID != "" {
 		conditions = append(conditions, "owner_id = ?")
 		args = append(args, filter.OwnerID)
 	}
 
-	// Exclude soft-deleted agents unless explicitly requested or filtering by deleted status
-	if !filter.IncludeDeleted && filter.Status != store.AgentStatusDeleted {
-		conditions = append(conditions, "status != ?")
-		args = append(args, store.AgentStatusDeleted)
+	// Exclude soft-deleted agents unless explicitly requested
+	if !filter.IncludeDeleted {
+		conditions = append(conditions, "deleted_at IS NULL")
 	}
 
 	whereClause := ""
@@ -913,7 +937,7 @@ func (s *SQLiteStore) ListAgents(ctx context.Context, filter store.AgentFilter, 
 	query := fmt.Sprintf(`
 		SELECT id, agent_id, name, template, grove_id,
 			labels, annotations,
-			status, phase, activity, tool_name,
+			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
@@ -939,7 +963,7 @@ func (s *SQLiteStore) ListAgents(ctx context.Context, filter store.AgentFilter, 
 		if err := rows.Scan(
 			&agent.ID, &agent.Slug, &agent.Name, &agent.Template, &agent.GroveID,
 			&labels, &annotations,
-			&agent.Status, &agent.Phase, &agent.Activity, &toolName,
+			&agent.Phase, &agent.Activity, &toolName,
 			&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
 			&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 			&appliedConfig,
@@ -988,15 +1012,6 @@ func (s *SQLiteStore) ListAgents(ctx context.Context, filter store.AgentFilter, 
 func (s *SQLiteStore) UpdateAgentStatus(ctx context.Context, id string, su store.AgentStatusUpdate) error {
 	now := time.Now()
 
-	// Compute derived status from phase+activity when structured fields are present
-	if su.Phase != "" || su.Activity != "" {
-		if su.Phase == "running" && su.Activity != "" {
-			su.Status = su.Activity
-		} else if su.Phase != "" {
-			su.Status = su.Phase
-		}
-	}
-
 	// When activity is being updated to something other than "executing",
 	// clear tool_name (it's only meaningful during execution).
 	// We signal this by setting the activity-provided flag.
@@ -1004,7 +1019,6 @@ func (s *SQLiteStore) UpdateAgentStatus(ctx context.Context, id string, su store
 
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE agents SET
-			status = COALESCE(NULLIF(?, ''), status),
 			phase = COALESCE(NULLIF(?, ''), phase),
 			activity = CASE WHEN ? != '' THEN ? ELSE activity END,
 			tool_name = CASE WHEN ? THEN ? ELSE tool_name END,
@@ -1017,7 +1031,7 @@ func (s *SQLiteStore) UpdateAgentStatus(ctx context.Context, id string, su store
 			last_seen = ?
 		WHERE id = ?
 	`,
-		su.Status, su.Phase,
+		su.Phase,
 		su.Activity, su.Activity,
 		activityProvided, su.ToolName,
 		su.Message, su.ConnectionState, su.ContainerStatus,
@@ -1040,8 +1054,8 @@ func (s *SQLiteStore) UpdateAgentStatus(ctx context.Context, id string, su store
 
 func (s *SQLiteStore) PurgeDeletedAgents(ctx context.Context, cutoff time.Time) (int, error) {
 	result, err := s.db.ExecContext(ctx,
-		"DELETE FROM agents WHERE status = ? AND deleted_at < ?",
-		store.AgentStatusDeleted, cutoff,
+		"DELETE FROM agents WHERE deleted_at IS NOT NULL AND deleted_at < ?",
+		cutoff,
 	)
 	if err != nil {
 		return 0, err
@@ -1070,7 +1084,6 @@ func (s *SQLiteStore) MarkStaleAgentsOffline(ctx context.Context, threshold time
 	_, err = tx.ExecContext(ctx, `
 		UPDATE agents SET
 			activity = 'offline',
-			status = 'offline',
 			updated_at = ?
 		WHERE last_seen < ?
 		  AND last_seen IS NOT NULL
@@ -1085,7 +1098,7 @@ func (s *SQLiteStore) MarkStaleAgentsOffline(ctx context.Context, threshold time
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, agent_id, name, template, grove_id,
 			labels, annotations,
-			status, phase, activity, tool_name,
+			phase, activity, tool_name,
 			connection_state, container_status, runtime_state,
 			image, detached, runtime, runtime_broker_id, web_pty_enabled, task_summary, message,
 			applied_config,
@@ -1112,7 +1125,7 @@ func (s *SQLiteStore) MarkStaleAgentsOffline(ctx context.Context, threshold time
 		if err := rows.Scan(
 			&agent.ID, &agent.Slug, &agent.Name, &agent.Template, &agent.GroveID,
 			&labels, &annotations,
-			&agent.Status, &agent.Phase, &agent.Activity, &toolName,
+			&agent.Phase, &agent.Activity, &toolName,
 			&agent.ConnectionState, &agent.ContainerStatus, &agent.RuntimeState,
 			&agent.Image, &agent.Detached, &agent.Runtime, &runtimeBrokerID, &agent.WebPTYEnabled, &agent.TaskSummary, &message,
 			&appliedConfig,

@@ -72,7 +72,7 @@ func (s *Server) GetHealthInfo(ctx context.Context) *HealthResponse {
 
 	// Get stats
 	stats := &HealthStats{}
-	if agentResult, err := s.store.ListAgents(ctx, store.AgentFilter{Status: store.AgentStatusRunning}, store.ListOptions{Limit: 1}); err == nil {
+	if agentResult, err := s.store.ListAgents(ctx, store.AgentFilter{Phase: string(state.PhaseRunning)}, store.ListOptions{Limit: 1}); err == nil {
 		stats.ActiveAgents = agentResult.TotalCount
 	}
 	if groveResult, err := s.store.ListGroves(ctx, store.GroveFilter{}, store.ListOptions{Limit: 1}); err == nil {
@@ -252,7 +252,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 	filter := store.AgentFilter{
 		GroveID:         query.Get("groveId"),
 		RuntimeBrokerID: query.Get("runtimeBrokerId"),
-		Status:          query.Get("status"),
+		Phase:           query.Get("phase"),
 		IncludeDeleted:  query.Get("includeDeleted") == "true",
 	}
 
@@ -466,7 +466,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		Template:        req.Template,
 		GroveID:         req.GroveID,
 		RuntimeBrokerID: runtimeBrokerID,
-		Status:          store.AgentStatusPending,
+		Phase:           string(state.PhaseCreated),
 		Labels:          req.Labels,
 		Visibility:      store.VisibilityPrivate,
 		CreatedBy:       createdBy,
@@ -567,8 +567,8 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// Set agent to provisioning status (not dispatched yet)
-			agent.Status = store.AgentStatusProvisioning
+			// Set agent to provisioning phase (not dispatched yet)
+			agent.Phase = string(state.PhaseProvisioning)
 			if err := s.store.UpdateAgent(ctx, agent); err != nil {
 				slog.Warn("Failed to update agent status to provisioning", "error", err)
 			}
@@ -637,9 +637,9 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 					warnings = append(warnings, "Failed to dispatch to runtime broker: "+err.Error())
 				} else if envReqs != nil {
 					// Broker returned 202: needs env gather
-					agent.Status = store.AgentStatusProvisioning
+					agent.Phase = string(state.PhaseProvisioning)
 					if err := s.store.UpdateAgent(ctx, agent); err != nil {
-						slog.Warn("Failed to update agent status for env-gather", "error", err)
+						slog.Warn("Failed to update agent phase for env-gather", "error", err)
 					}
 
 					s.enrichAgent(ctx, agent, grove, nil)
@@ -652,11 +652,11 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 					})
 					return
 				} else {
-					if agent.Status == store.AgentStatusPending {
-						agent.Status = store.AgentStatusProvisioning
+					if agent.Phase == string(state.PhaseCreated) {
+						agent.Phase = string(state.PhaseProvisioning)
 					}
 					if err := s.store.UpdateAgent(ctx, agent); err != nil {
-						warnings = append(warnings, "Failed to update agent status: "+err.Error())
+						warnings = append(warnings, "Failed to update agent phase: "+err.Error())
 					}
 				}
 			} else {
@@ -671,11 +671,11 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 					MissingEnvVars(w, envReqs.Needs, s.buildEnvGatherResponse(ctx, agent, envReqs))
 					return
 				} else {
-					if agent.Status == store.AgentStatusPending {
-						agent.Status = store.AgentStatusProvisioning
+					if agent.Phase == string(state.PhaseCreated) {
+						agent.Phase = string(state.PhaseProvisioning)
 					}
 					if err := s.store.UpdateAgent(ctx, agent); err != nil {
-						warnings = append(warnings, "Failed to update agent status: "+err.Error())
+						warnings = append(warnings, "Failed to update agent phase: "+err.Error())
 					}
 				}
 			}
@@ -684,9 +684,9 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 			if err := dispatcher.DispatchAgentProvision(ctx, agent); err != nil {
 				warnings = append(warnings, "Failed to provision on runtime broker: "+err.Error())
 			} else {
-				agent.Status = store.AgentStatusCreated
+				agent.Phase = string(state.PhaseCreated)
 				if err := s.store.UpdateAgent(ctx, agent); err != nil {
-					warnings = append(warnings, "Failed to update agent status: "+err.Error())
+					warnings = append(warnings, "Failed to update agent phase: "+err.Error())
 				}
 			}
 		}
@@ -854,9 +854,9 @@ func (s *Server) submitAgentEnv(w http.ResponseWriter, r *http.Request, groveID,
 	}
 
 	// Verify agent is in a state that expects env submission
-	if agent.Status != store.AgentStatusProvisioning && agent.Status != store.AgentStatusPending {
+	if agent.Phase != string(state.PhaseProvisioning) && agent.Phase != string(state.PhaseCreated) {
 		writeError(w, http.StatusConflict, "invalid_state",
-			fmt.Sprintf("agent is in '%s' status; env submission only valid during provisioning", agent.Status), nil)
+			fmt.Sprintf("agent is in '%s' phase; env submission only valid during provisioning", agent.Phase), nil)
 		return
 	}
 
@@ -873,12 +873,12 @@ func (s *Server) submitAgentEnv(w http.ResponseWriter, r *http.Request, groveID,
 		return
 	}
 
-	// Update agent status from broker response
-	if agent.Status == store.AgentStatusProvisioning || agent.Status == store.AgentStatusPending {
-		agent.Status = store.AgentStatusRunning
+	// Update agent phase from broker response
+	if agent.Phase == string(state.PhaseProvisioning) || agent.Phase == string(state.PhaseCreated) {
+		agent.Phase = string(state.PhaseRunning)
 	}
 	if err := s.store.UpdateAgent(ctx, agent); err != nil {
-		slog.Warn("Failed to update agent status after env submit", "error", err)
+		slog.Warn("Failed to update agent phase after env submit", "error", err)
 	}
 
 	// Enrich and return
@@ -1222,7 +1222,7 @@ func (s *Server) performAgentDelete(w http.ResponseWriter, r *http.Request, agen
 	force := query.Get("force") == "true"
 
 	// Idempotency: already-deleted agent returns 204
-	if agent.Status == store.AgentStatusDeleted {
+	if !agent.DeletedAt.IsZero() {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -1262,7 +1262,7 @@ func (s *Server) performAgentDelete(w http.ResponseWriter, r *http.Request, agen
 
 	if softDelete {
 		// Soft delete: mark agent as deleted with timestamp
-		agent.Status = store.AgentStatusDeleted
+		agent.Phase = string(state.PhaseStopped)
 		agent.DeletedAt = now
 		agent.Updated = now
 		if err := s.store.UpdateAgent(ctx, agent); err != nil {
@@ -1359,12 +1359,11 @@ func (s *Server) restoreAgent(w http.ResponseWriter, r *http.Request, id string)
 		return
 	}
 
-	if agent.Status != store.AgentStatusDeleted {
+	if agent.DeletedAt.IsZero() {
 		BadRequest(w, "Agent is not in deleted state")
 		return
 	}
 
-	agent.Status = store.AgentStatusRestored
 	agent.DeletedAt = time.Time{}
 	agent.Updated = time.Now()
 
@@ -1476,7 +1475,7 @@ func (s *Server) handleAgentLifecycle(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	var newStatus string
+	var newPhase string
 	var dispatchErr error
 
 	// If a dispatcher is available, dispatch the operation to the runtime broker
@@ -1484,17 +1483,17 @@ func (s *Server) handleAgentLifecycle(w http.ResponseWriter, r *http.Request, id
 
 	switch action {
 	case "start":
-		newStatus = store.AgentStatusRunning
+		newPhase = string(state.PhaseRunning)
 		if dispatcher != nil && agent.RuntimeBrokerID != "" {
 			dispatchErr = dispatcher.DispatchAgentStart(ctx, agent, "")
 			// DispatchAgentStart applies the broker response in-place;
-			// use the broker-reported status if it was set.
-			if dispatchErr == nil && agent.Status != "" {
-				newStatus = agent.Status
+			// use the broker-reported phase if it was set.
+			if dispatchErr == nil && agent.Phase != "" {
+				newPhase = agent.Phase
 			}
 		}
 	case "stop":
-		newStatus = store.AgentStatusStopped
+		newPhase = string(state.PhaseStopped)
 		if dispatcher != nil && agent.RuntimeBrokerID != "" {
 			// Before stopping, sync workspace back for hub-native groves on remote brokers.
 			// This is best-effort: failures are logged but don't block the stop.
@@ -1502,7 +1501,7 @@ func (s *Server) handleAgentLifecycle(w http.ResponseWriter, r *http.Request, id
 			dispatchErr = dispatcher.DispatchAgentStop(ctx, agent)
 		}
 	case "restart":
-		newStatus = store.AgentStatusRunning
+		newPhase = string(state.PhaseRunning)
 		if dispatcher != nil && agent.RuntimeBrokerID != "" {
 			// Restart is implemented as stop + start so that env vars
 			// (API keys, secrets) are re-resolved from Hub storage.
@@ -1510,9 +1509,9 @@ func (s *Server) handleAgentLifecycle(w http.ResponseWriter, r *http.Request, id
 			if dispatchErr == nil {
 				dispatchErr = dispatcher.DispatchAgentStart(ctx, agent, "")
 				// DispatchAgentStart applies the broker response in-place;
-				// use the broker-reported status if it was set.
-				if dispatchErr == nil && agent.Status != "" {
-					newStatus = agent.Status
+				// use the broker-reported phase if it was set.
+				if dispatchErr == nil && agent.Phase != "" {
+					newPhase = agent.Phase
 				}
 			}
 		}
@@ -1525,12 +1524,13 @@ func (s *Server) handleAgentLifecycle(w http.ResponseWriter, r *http.Request, id
 	}
 
 	statusUpdate := store.AgentStatusUpdate{
-		Status: newStatus,
+		Phase: newPhase,
 	}
 	// When stopping, also update container status so the hub immediately
 	// reflects the stopped state without waiting for the next heartbeat.
 	if action == "stop" {
 		statusUpdate.ContainerStatus = "stopped"
+		statusUpdate.Activity = ""
 	}
 	// When starting, propagate container status from broker response
 	if action == "start" && agent.ContainerStatus != "" {
@@ -1541,7 +1541,7 @@ func (s *Server) handleAgentLifecycle(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 
-	agent.Status = newStatus
+	agent.Phase = newPhase
 	s.events.PublishAgentStatus(ctx, agent)
 
 	writeJSON(w, http.StatusOK, agent)
@@ -2433,7 +2433,7 @@ func (s *Server) listGroveAgents(w http.ResponseWriter, r *http.Request, groveID
 	filter := store.AgentFilter{
 		GroveID:         groveID,
 		RuntimeBrokerID: query.Get("runtimeBrokerId"),
-		Status:          query.Get("status"),
+		Phase:           query.Get("phase"),
 		IncludeDeleted:  query.Get("includeDeleted") == "true",
 	}
 
@@ -2615,7 +2615,7 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 		Template:        req.Template,
 		GroveID:         groveID,
 		RuntimeBrokerID: runtimeBrokerID,
-		Status:          store.AgentStatusPending,
+		Phase:           string(state.PhaseCreated),
 		Labels:          req.Labels,
 		Visibility:      store.VisibilityPrivate,
 		CreatedBy:       createdBy,
@@ -2679,9 +2679,9 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 					warnings = append(warnings, "Failed to dispatch to runtime broker: "+err.Error())
 				} else if envReqs != nil {
 					// Broker returned 202: needs env gather
-					agent.Status = store.AgentStatusProvisioning
+					agent.Phase = string(state.PhaseProvisioning)
 					if err := s.store.UpdateAgent(ctx, agent); err != nil {
-						slog.Warn("Failed to update agent status for env-gather", "error", err)
+						slog.Warn("Failed to update agent phase for env-gather", "error", err)
 					}
 
 					s.enrichAgent(ctx, agent, grove, nil)
@@ -2694,11 +2694,11 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 					})
 					return
 				} else {
-					if agent.Status == store.AgentStatusPending {
-						agent.Status = store.AgentStatusProvisioning
+					if agent.Phase == string(state.PhaseCreated) {
+						agent.Phase = string(state.PhaseProvisioning)
 					}
 					if err := s.store.UpdateAgent(ctx, agent); err != nil {
-						warnings = append(warnings, "Failed to update agent status: "+err.Error())
+						warnings = append(warnings, "Failed to update agent phase: "+err.Error())
 					}
 				}
 			} else {
@@ -2713,11 +2713,11 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 					MissingEnvVars(w, envReqs.Needs, s.buildEnvGatherResponse(ctx, agent, envReqs))
 					return
 				} else {
-					if agent.Status == store.AgentStatusPending {
-						agent.Status = store.AgentStatusProvisioning
+					if agent.Phase == string(state.PhaseCreated) {
+						agent.Phase = string(state.PhaseProvisioning)
 					}
 					if err := s.store.UpdateAgent(ctx, agent); err != nil {
-						warnings = append(warnings, "Failed to update agent status: "+err.Error())
+						warnings = append(warnings, "Failed to update agent phase: "+err.Error())
 					}
 				}
 			}
@@ -2726,9 +2726,9 @@ func (s *Server) createGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 			if err := dispatcher.DispatchAgentProvision(ctx, agent); err != nil {
 				warnings = append(warnings, "Failed to provision on runtime broker: "+err.Error())
 			} else {
-				agent.Status = store.AgentStatusCreated
+				agent.Phase = string(state.PhaseCreated)
 				if err := s.store.UpdateAgent(ctx, agent); err != nil {
-					warnings = append(warnings, "Failed to update agent status: "+err.Error())
+					warnings = append(warnings, "Failed to update agent phase: "+err.Error())
 				}
 			}
 		}
@@ -3098,7 +3098,7 @@ func (s *Server) deleteGroveAgents(ctx context.Context, grove *store.Grove) {
 
 	now := time.Now()
 	for _, agent := range result.Items {
-		if agent.Status == store.AgentStatusDeleted {
+		if !agent.DeletedAt.IsZero() {
 			continue
 		}
 		if dispatcher != nil && agent.RuntimeBrokerID != "" {
@@ -3616,47 +3616,28 @@ func (s *Server) handleBrokerHeartbeat(w http.ResponseWriter, r *http.Request, i
 			}
 
 			if agentHB.Phase != "" {
-				// New structured path: broker sent Phase/Activity directly
+				// Structured path: broker sent Phase/Activity directly
 				statusUpdate.Phase = agentHB.Phase
 				statusUpdate.Activity = agentHB.Activity
-				if agentHB.Status != "" {
-					statusUpdate.Status = agentHB.Status
-				} else {
-					// Derive display status from Phase/Activity
-					as := state.AgentState{
-						Phase:    state.Phase(agentHB.Phase),
-						Activity: state.Activity(agentHB.Activity),
-					}
-					statusUpdate.Status = as.DisplayStatus()
-				}
 			} else {
-				// Legacy path: no structured fields, derive from Status and ContainerStatus
-				if agentHB.Status != "" {
-					statusUpdate.Status = agentHB.Status
-				}
-
-				// Derive phase/status from container status to ensure agents
+				// Legacy path: no structured fields, derive from ContainerStatus
+				// Derive phase from container status to ensure agents
 				// registered via sync (not started via hub) get proper state.
-				// Terminal container states (exited/stopped) override agent status.
+				// Terminal container states (exited/stopped) override agent phase.
 				if agentHB.ContainerStatus != "" {
 					containerStatusLower := strings.ToLower(agentHB.ContainerStatus)
 					switch {
 					case strings.HasPrefix(containerStatusLower, "up") || containerStatusLower == "running":
-						statusUpdate.Phase = "running"
-						if statusUpdate.Status == "" {
-							statusUpdate.Status = store.AgentStatusRunning
-						}
+						statusUpdate.Phase = string(state.PhaseRunning)
 					case strings.HasPrefix(containerStatusLower, "exited") || containerStatusLower == "stopped":
-						statusUpdate.Phase = "stopped"
+						statusUpdate.Phase = string(state.PhaseStopped)
 						statusUpdate.Activity = ""
-						statusUpdate.Status = store.AgentStatusStopped
 					case containerStatusLower == "created":
 						// Don't downgrade a running agent to provisioning — the
 						// container may briefly report "created" while the runtime
 						// is transitioning to started.
-						if agent.Status != store.AgentStatusRunning && statusUpdate.Status == "" {
-							statusUpdate.Phase = "provisioning"
-							statusUpdate.Status = store.AgentStatusProvisioning
+						if agent.Phase != string(state.PhaseRunning) {
+							statusUpdate.Phase = string(state.PhaseProvisioning)
 						}
 					}
 				}
@@ -6008,9 +5989,9 @@ func (s *Server) handleExistingAgent(
 
 	// Phase 1: Stale cleanup — agent is running/stopped/error and caller wants a real start.
 	if !req.ProvisionOnly &&
-		(existingAgent.Status == store.AgentStatusRunning ||
-			existingAgent.Status == store.AgentStatusStopped ||
-			existingAgent.Status == store.AgentStatusError) {
+		(existingAgent.Phase == string(state.PhaseRunning) ||
+			existingAgent.Phase == string(state.PhaseStopped) ||
+			existingAgent.Phase == string(state.PhaseError)) {
 		dispatcher := s.GetDispatcher()
 		if dispatcher != nil && existingAgent.RuntimeBrokerID != "" {
 			_ = dispatcher.DispatchAgentDelete(ctx, existingAgent, false, false, false, time.Time{})
@@ -6023,7 +6004,7 @@ func (s *Server) handleExistingAgent(
 	}
 
 	// Phase 2: Env-gather re-provisioning — provisioning + GatherEnv requested.
-	if req.GatherEnv && existingAgent.Status == store.AgentStatusProvisioning {
+	if req.GatherEnv && existingAgent.Phase == string(state.PhaseProvisioning) {
 		dispatcher := s.GetDispatcher()
 		if dispatcher != nil && existingAgent.RuntimeBrokerID != "" {
 			_ = dispatcher.DispatchAgentDelete(ctx, existingAgent, false, false, false, time.Time{})
@@ -6035,11 +6016,10 @@ func (s *Server) handleExistingAgent(
 		return existingAgentDeleted
 	}
 
-	// Phase 3: Restart — agent was provisioned/created/pending but not yet started.
+	// Phase 3: Restart — agent was provisioned/created but not yet started.
 	if !req.ProvisionOnly &&
-		(existingAgent.Status == store.AgentStatusCreated ||
-			existingAgent.Status == store.AgentStatusProvisioning ||
-			existingAgent.Status == store.AgentStatusPending) {
+		(existingAgent.Phase == string(state.PhaseCreated) ||
+			existingAgent.Phase == string(state.PhaseProvisioning)) {
 
 		// Recover RuntimeBrokerID from the freshly-resolved value if the stored one is empty.
 		if existingAgent.RuntimeBrokerID == "" && runtimeBrokerID != "" {
@@ -6066,11 +6046,10 @@ func (s *Server) handleExistingAgent(
 			return existingAgentErrored
 		}
 
-		// If the broker didn't set a running status, default to running.
-		if existingAgent.Status == store.AgentStatusCreated ||
-			existingAgent.Status == store.AgentStatusProvisioning ||
-			existingAgent.Status == store.AgentStatusPending {
-			existingAgent.Status = store.AgentStatusRunning
+		// If the broker didn't set a running phase, default to running.
+		if existingAgent.Phase == string(state.PhaseCreated) ||
+			existingAgent.Phase == string(state.PhaseProvisioning) {
+			existingAgent.Phase = string(state.PhaseRunning)
 		}
 		if err := s.store.UpdateAgent(ctx, existingAgent); err != nil {
 			// Log but continue — agent was started.

@@ -664,7 +664,7 @@ func TestStartReturnsRunningStatus(t *testing.T) {
 					ContainerID:     "abc123",
 					Name:            "test-agent",
 					ContainerStatus: "Up 2 hours",
-					Status:          "created", // stale status from runtime
+					Phase:           "created", // stale phase from runtime
 				},
 			}, nil
 		},
@@ -680,8 +680,8 @@ func TestStartReturnsRunningStatus(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if result.Status != "running" {
-		t.Errorf("expected Status = %q, got %q", "running", result.Status)
+	if result.Phase != "running" {
+		t.Errorf("expected Phase = %q, got %q", "running", result.Phase)
 	}
 }
 

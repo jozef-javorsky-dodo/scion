@@ -228,21 +228,21 @@ func TestMergeScionConfig(t *testing.T) {
 		name     string
 		base     *api.ScionConfig
 		override *api.ScionConfig
-		wantStatus string
+		wantPhase string
 	}{
 		{
-			name:     "override status",
-			base:     &api.ScionConfig{Info: &api.AgentInfo{Status: "created"}},
-			override: &api.ScionConfig{Info: &api.AgentInfo{Status: "running"}},
-			wantStatus: "running",
+			name:      "override phase",
+			base:      &api.ScionConfig{Info: &api.AgentInfo{Phase: "created"}},
+			override:  &api.ScionConfig{Info: &api.AgentInfo{Phase: "running"}},
+			wantPhase: "running",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := MergeScionConfig(tt.base, tt.override)
-			if got.Info == nil || got.Info.Status != tt.wantStatus {
-				t.Errorf("MergeScionConfig() Status = %v, want %v", got.Info.Status, tt.wantStatus)
+			if got.Info == nil || got.Info.Phase != tt.wantPhase {
+				t.Errorf("MergeScionConfig() Phase = %v, want %v", got.Info.Phase, tt.wantPhase)
 			}
 		})
 	}

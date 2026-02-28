@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ func TestAgentStatusUpdate_Authorization(t *testing.T) {
 		Slug: "agent-1-slug",
 		Name:    "Agent 1",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent1))
 
@@ -58,7 +59,7 @@ func TestAgentStatusUpdate_Authorization(t *testing.T) {
 		Slug: "agent-2-slug",
 		Name:    "Agent 2",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent2))
 
@@ -72,8 +73,8 @@ func TestAgentStatusUpdate_Authorization(t *testing.T) {
 
 	t.Run("Agent 1 can update its own status", func(t *testing.T) {
 		status := store.AgentStatusUpdate{
-			Status:  "idle",
-			Message: "Waiting for user input",
+			Activity: "idle",
+			Message:  "Waiting for user input",
 		}
 		body, _ := json.Marshal(status)
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/agent-1/status", bytes.NewReader(body))
@@ -88,13 +89,13 @@ func TestAgentStatusUpdate_Authorization(t *testing.T) {
 		// Verify update in store
 		updated, err := s.GetAgent(ctx, agent1.ID)
 		require.NoError(t, err)
-		assert.Equal(t, "idle", updated.Status)
+		assert.Equal(t, "idle", updated.Activity)
 		assert.Equal(t, "Waiting for user input", updated.Message)
 	})
 
 	t.Run("Agent 1 cannot update Agent 2's status", func(t *testing.T) {
 		status := store.AgentStatusUpdate{
-			Status: "error",
+			Phase: "error",
 		}
 		body, _ := json.Marshal(status)
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/agent-2/status", bytes.NewReader(body))
@@ -119,7 +120,7 @@ func TestAgentStatusUpdate_Authorization(t *testing.T) {
 
 	t.Run("User can update agent status", func(t *testing.T) {
 		status := store.AgentStatusUpdate{
-			Status: "running",
+			Phase: "running",
 		}
 		body, _ := json.Marshal(status)
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/agents/agent-1/status", bytes.NewReader(body))
@@ -133,7 +134,7 @@ func TestAgentStatusUpdate_Authorization(t *testing.T) {
 
 		updated, err := s.GetAgent(ctx, agent1.ID)
 		require.NoError(t, err)
-		assert.Equal(t, "running", updated.Status)
+		assert.Equal(t, "running", updated.Phase)
 	})
 }
 
@@ -155,7 +156,7 @@ func TestAgentStatusUpdate_Heartbeat(t *testing.T) {
 		Slug: "agent-h-slug",
 		Name:    "Agent Heartbeat",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 
@@ -169,7 +170,7 @@ func TestAgentStatusUpdate_Heartbeat(t *testing.T) {
 
 	// Send heartbeat
 	status := store.AgentStatusUpdate{
-		Status:    store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		Heartbeat: true,
 	}
 	body, _ := json.Marshal(status)
@@ -214,7 +215,7 @@ func setupOfflineBrokerAgent(t *testing.T, s store.Store, suffix string) (*store
 		Name:            fmt.Sprintf("Agent Offline %s", suffix),
 		GroveID:         grove.ID,
 		RuntimeBrokerID: broker.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 
@@ -251,7 +252,7 @@ func TestDeleteAgent_NoBroker(t *testing.T) {
 		Slug: "agent-nobroker-slug",
 		Name:    "Agent No Broker",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		// No RuntimeBrokerID set
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
@@ -307,7 +308,7 @@ func setupOnlineBrokerAgent(t *testing.T, s store.Store, suffix string) (*store.
 		Name:            fmt.Sprintf("Agent Online %s", suffix),
 		GroveID:         grove.ID,
 		RuntimeBrokerID: broker.ID,
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 
@@ -453,7 +454,7 @@ func TestAgentCreateAgent_WithScope(t *testing.T) {
 		Slug:    "agent-caller",
 		Name:    "Calling Agent",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, callingAgent))
 
@@ -560,7 +561,7 @@ func TestAgentLifecycle_WithScope(t *testing.T) {
 		Slug:    "agent-lc-caller",
 		Name:    "Lifecycle Caller",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, callingAgent))
 
@@ -570,7 +571,7 @@ func TestAgentLifecycle_WithScope(t *testing.T) {
 		Slug:    "agent-lc-target",
 		Name:    "Lifecycle Target",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, targetAgent))
 
@@ -608,7 +609,7 @@ func TestAgentLifecycle_WithScope(t *testing.T) {
 			Slug:    "agent-lc-other",
 			Name:    "Other LC Agent",
 			GroveID: otherGrove.ID,
-			Status:  store.AgentStatusRunning,
+			Phase: string(state.PhaseRunning),
 		}
 		require.NoError(t, s.CreateAgent(ctx, otherAgent))
 
@@ -669,7 +670,7 @@ func TestAgentGetAgent_GroveIsolation(t *testing.T) {
 		Slug:    "agent-get-caller",
 		Name:    "Get Caller",
 		GroveID: grove1.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent1))
 
@@ -678,7 +679,7 @@ func TestAgentGetAgent_GroveIsolation(t *testing.T) {
 		Slug:    "agent-get-same",
 		Name:    "Same Grove Agent",
 		GroveID: grove1.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent2SameGrove))
 
@@ -687,7 +688,7 @@ func TestAgentGetAgent_GroveIsolation(t *testing.T) {
 		Slug:    "agent-get-other",
 		Name:    "Other Grove Agent",
 		GroveID: grove2.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agentOtherGrove))
 
@@ -746,18 +747,18 @@ func TestDeleteGroveAgent_BrokerOffline(t *testing.T) {
 // createAgentDispatcher is a mock dispatcher for createAgent handler tests.
 // It allows controlling the status that DispatchAgentCreate reports back.
 type createAgentDispatcher struct {
-	createStatus string // status to set on agent during DispatchAgentCreate
+	createPhase string // status to set on agent during DispatchAgentCreate
 	deleteCalled bool
 }
 
 func (d *createAgentDispatcher) DispatchAgentCreate(_ context.Context, agent *store.Agent) error {
-	if d.createStatus != "" {
-		agent.Status = d.createStatus
+	if d.createPhase != "" {
+		agent.Phase = d.createPhase
 	}
 	return nil
 }
 func (d *createAgentDispatcher) DispatchAgentProvision(_ context.Context, agent *store.Agent) error {
-	agent.Status = store.AgentStatusCreated
+	agent.Phase = string(state.PhaseCreated)
 	return nil
 }
 func (d *createAgentDispatcher) DispatchAgentStart(_ context.Context, _ *store.Agent, _ string) error {
@@ -823,7 +824,7 @@ func setupCreateAgentServer(t *testing.T, disp AgentDispatcher) (*Server, store.
 }
 
 func TestCreateAgent_BrokerStatusPreserved(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -841,19 +842,19 @@ func TestCreateAgent_BrokerStatusPreserved(t *testing.T) {
 	require.NotNil(t, resp.Agent)
 
 	// The response should reflect the broker-reported status, not hardcoded "provisioning"
-	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status,
+	assert.Equal(t, string(state.PhaseRunning), resp.Agent.Phase,
 		"agent status should reflect broker response, not hardcoded provisioning")
 
 	// Verify persisted status in store
 	persisted, err := s.GetAgent(ctx, resp.Agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.AgentStatusRunning, persisted.Status,
+	assert.Equal(t, string(state.PhaseRunning), persisted.Phase,
 		"persisted agent status should match broker response")
 }
 
 func TestCreateAgent_FallbackToProvisioningWhenNoBrokerStatus(t *testing.T) {
 	// Dispatcher that doesn't set a status (leaves it as "pending")
-	disp := &createAgentDispatcher{createStatus: ""}
+	disp := &createAgentDispatcher{createPhase: ""}
 	srv, _, grove := setupCreateAgentServer(t, disp)
 
 	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
@@ -869,14 +870,14 @@ func TestCreateAgent_FallbackToProvisioningWhenNoBrokerStatus(t *testing.T) {
 	require.NotNil(t, resp.Agent)
 
 	// When broker doesn't report a status, should fall back to "provisioning"
-	assert.Equal(t, store.AgentStatusProvisioning, resp.Agent.Status,
+	assert.Equal(t, string(state.PhaseProvisioning), resp.Agent.Phase,
 		"agent status should fall back to provisioning when broker doesn't report status")
 }
 
 func TestCreateAgent_StartsWithoutTask(t *testing.T) {
 	// When ProvisionOnly is false (scion start), the agent should be started
 	// even if no task is provided — the template may have a built-in prompt.
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, _, grove := setupCreateAgentServer(t, disp)
 
 	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
@@ -892,13 +893,13 @@ func TestCreateAgent_StartsWithoutTask(t *testing.T) {
 	require.NotNil(t, resp.Agent)
 
 	// Should be running, not "created" (which would mean provision-only was used)
-	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status,
+	assert.Equal(t, string(state.PhaseRunning), resp.Agent.Phase,
 		"agent should be started (running) even without a task when ProvisionOnly is false")
 }
 
 func TestCreateAgent_ProvisionOnlyStaysCreated(t *testing.T) {
 	// When ProvisionOnly is true (scion create), the agent should not start.
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, _, grove := setupCreateAgentServer(t, disp)
 
 	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents", CreateAgentRequest{
@@ -914,12 +915,12 @@ func TestCreateAgent_ProvisionOnlyStaysCreated(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Agent)
 
-	assert.Equal(t, store.AgentStatusCreated, resp.Agent.Status,
+	assert.Equal(t, string(state.PhaseCreated), resp.Agent.Phase,
 		"agent should stay in created status when ProvisionOnly is true")
 }
 
 func TestCreateAgent_RestartFromProvisioningStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -930,7 +931,7 @@ func TestCreateAgent_RestartFromProvisioningStatus(t *testing.T) {
 		Name:            "stuck-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, stuckAgent))
 
@@ -947,11 +948,11 @@ func TestCreateAgent_RestartFromProvisioningStatus(t *testing.T) {
 	var resp CreateAgentResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Agent)
-	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status)
+	assert.Equal(t, string(state.PhaseRunning), resp.Agent.Phase)
 }
 
 func TestCreateAgent_RestartFromPendingStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -962,7 +963,7 @@ func TestCreateAgent_RestartFromPendingStatus(t *testing.T) {
 		Name:            "pending-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusPending,
+		Phase: string(state.PhaseCreated),
 	}
 	require.NoError(t, s.CreateAgent(ctx, pendingAgent))
 
@@ -978,7 +979,7 @@ func TestCreateAgent_RestartFromPendingStatus(t *testing.T) {
 }
 
 func TestCreateAgent_RecreateFromRunningStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -989,7 +990,7 @@ func TestCreateAgent_RecreateFromRunningStatus(t *testing.T) {
 		Name:            "running-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, runningAgent))
 
@@ -1015,11 +1016,11 @@ func TestCreateAgent_RecreateFromRunningStatus(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Agent)
 	assert.NotEqual(t, "agent-running-stale", resp.Agent.ID, "new agent should have a different ID")
-	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status)
+	assert.Equal(t, string(state.PhaseRunning), resp.Agent.Phase)
 }
 
 func TestCreateAgent_RecreateFromErrorStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1030,7 +1031,7 @@ func TestCreateAgent_RecreateFromErrorStatus(t *testing.T) {
 		Name:            "error-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusError,
+		Phase: string(state.PhaseError),
 	}
 	require.NoError(t, s.CreateAgent(ctx, errorAgent))
 
@@ -1050,7 +1051,7 @@ func TestCreateAgent_RecreateFromErrorStatus(t *testing.T) {
 }
 
 func TestCreateAgent_RecreateFromStoppedStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1061,7 +1062,7 @@ func TestCreateAgent_RecreateFromStoppedStatus(t *testing.T) {
 		Name:            "stopped-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 	}
 	require.NoError(t, s.CreateAgent(ctx, stoppedAgent))
 
@@ -1224,7 +1225,7 @@ func TestAgentCreate_LocalTemplateNoBroker(t *testing.T) {
 }
 
 func TestCreateAgent_CreatorName_UserEmail(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1270,7 +1271,7 @@ func TestListAgents_ServerTimeIncluded(t *testing.T) {
 		Slug:    "agent-servertime-slug",
 		Name:    "ServerTime Agent",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, agent))
 
@@ -1327,7 +1328,7 @@ func TestListGroveAgents_ServerTimeIncluded(t *testing.T) {
 // endpoint (/api/v1/groves/{groveId}/agents) preserves the status set by the broker's
 // response rather than unconditionally overwriting it with "provisioning".
 func TestCreateGroveAgent_BrokerStatusPreserved(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1346,13 +1347,13 @@ func TestCreateGroveAgent_BrokerStatusPreserved(t *testing.T) {
 	require.NotNil(t, resp.Agent)
 
 	// The response should reflect the broker-reported status, not hardcoded "provisioning"
-	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status,
+	assert.Equal(t, string(state.PhaseRunning), resp.Agent.Phase,
 		"grove-scoped agent status should reflect broker response, not hardcoded provisioning")
 
 	// Verify persisted status in store
 	persisted, err := s.GetAgent(ctx, resp.Agent.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.AgentStatusRunning, persisted.Status,
+	assert.Equal(t, string(state.PhaseRunning), persisted.Phase,
 		"persisted agent status should match broker response")
 }
 
@@ -1360,7 +1361,7 @@ func TestCreateGroveAgent_BrokerStatusPreserved(t *testing.T) {
 // endpoint falls back to "provisioning" when the broker doesn't report a status.
 func TestCreateGroveAgent_FallbackToProvisioningWhenNoBrokerStatus(t *testing.T) {
 	// Dispatcher that doesn't set a status (leaves it as "pending")
-	disp := &createAgentDispatcher{createStatus: ""}
+	disp := &createAgentDispatcher{createPhase: ""}
 	srv, _, grove := setupCreateAgentServer(t, disp)
 
 	rec := doRequest(t, srv, http.MethodPost,
@@ -1377,12 +1378,12 @@ func TestCreateGroveAgent_FallbackToProvisioningWhenNoBrokerStatus(t *testing.T)
 	require.NotNil(t, resp.Agent)
 
 	// When broker doesn't report a status, should fall back to "provisioning"
-	assert.Equal(t, store.AgentStatusProvisioning, resp.Agent.Status,
+	assert.Equal(t, string(state.PhaseProvisioning), resp.Agent.Phase,
 		"agent status should fall back to provisioning when broker doesn't report status")
 }
 
 func TestCreateAgent_GitAnchoredGrovePopulatesGitClone(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, _ := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1432,7 +1433,7 @@ func TestCreateAgent_GitAnchoredGrovePopulatesGitClone(t *testing.T) {
 }
 
 func TestCreateAgent_NonGitGroveNoGitClone(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1456,7 +1457,7 @@ func TestCreateAgent_NonGitGroveNoGitClone(t *testing.T) {
 }
 
 func TestCreateGroveAgent_GitAnchoredGrovePopulatesGitClone(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, _ := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1507,7 +1508,7 @@ func TestCreateGroveAgent_GitAnchoredGrovePopulatesGitClone(t *testing.T) {
 }
 
 func TestCreateGroveAgent_NonGitGroveNoGitClone(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1532,7 +1533,7 @@ func TestCreateGroveAgent_NonGitGroveNoGitClone(t *testing.T) {
 }
 
 func TestCreateAgent_GitGroveCloneURLFallback(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, _ := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1583,7 +1584,7 @@ func TestCreateAgent_GitGroveCloneURLFallback(t *testing.T) {
 }
 
 func TestCreateAgent_GitGroveDefaultBranchFallback(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, _ := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1634,7 +1635,7 @@ func TestCreateAgent_GitGroveDefaultBranchFallback(t *testing.T) {
 }
 
 func TestCreateAgent_ProfileStoredInAppliedConfig(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1662,7 +1663,7 @@ func TestCreateAgent_ProfileStoredInAppliedConfig(t *testing.T) {
 }
 
 func TestCreateAgent_ProfileStoredWithConfigOverride(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1709,7 +1710,7 @@ func TestListAgents_HarnessConfigEnriched(t *testing.T) {
 		Slug:    "agent-harness-enrich",
 		Name:    "Harness Agent",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		AppliedConfig: &store.AgentAppliedConfig{
 			HarnessConfig: "gemini",
 		},
@@ -1764,7 +1765,7 @@ func TestGetAgent_HarnessConfigEnriched(t *testing.T) {
 		Slug:    "agent-harness-get",
 		Name:    "Harness Get Agent",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 		AppliedConfig: &store.AgentAppliedConfig{
 			HarnessConfig: "claude",
 		},
@@ -1784,7 +1785,7 @@ func TestGetAgent_HarnessConfigEnriched(t *testing.T) {
 // field in CreateAgentRequest is used as a fallback when the template doesn't
 // resolve a harness (e.g., during sync when the template is local-only).
 func TestCreateAgent_HarnessFromRequestField(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1828,7 +1829,7 @@ func TestCreateAgent_HarnessFromRequestField(t *testing.T) {
 // when a template resolves successfully, its harness takes precedence
 // over the explicit Harness field.
 func TestCreateAgent_HarnessFieldIgnoredWhenTemplateResolved(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1869,7 +1870,7 @@ func TestCreateAgent_HarnessFieldIgnoredWhenTemplateResolved(t *testing.T) {
 // locally), the harness is taken from the explicit Harness field, not from
 // the UUID string in Template.
 func TestCreateAgent_HarnessNotTemplateUUID(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1910,7 +1911,7 @@ func TestCreateAgent_HarnessNotTemplateUUID(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCreateGroveAgent_RecreateFromRunningStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1920,7 +1921,7 @@ func TestCreateGroveAgent_RecreateFromRunningStatus(t *testing.T) {
 		Name:            "running-grove-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, runningAgent))
 
@@ -1943,11 +1944,11 @@ func TestCreateGroveAgent_RecreateFromRunningStatus(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Agent)
 	assert.NotEqual(t, "grove-agent-running", resp.Agent.ID)
-	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status)
+	assert.Equal(t, string(state.PhaseRunning), resp.Agent.Phase)
 }
 
 func TestCreateGroveAgent_RecreateFromStoppedStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1957,7 +1958,7 @@ func TestCreateGroveAgent_RecreateFromStoppedStatus(t *testing.T) {
 		Name:            "stopped-grove-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusStopped,
+		Phase: string(state.PhaseStopped),
 	}
 	require.NoError(t, s.CreateAgent(ctx, stoppedAgent))
 
@@ -1976,7 +1977,7 @@ func TestCreateGroveAgent_RecreateFromStoppedStatus(t *testing.T) {
 }
 
 func TestCreateGroveAgent_RecreateFromErrorStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -1986,7 +1987,7 @@ func TestCreateGroveAgent_RecreateFromErrorStatus(t *testing.T) {
 		Name:            "errored-grove-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusError,
+		Phase: string(state.PhaseError),
 	}
 	require.NoError(t, s.CreateAgent(ctx, errorAgent))
 
@@ -2005,7 +2006,7 @@ func TestCreateGroveAgent_RecreateFromErrorStatus(t *testing.T) {
 }
 
 func TestCreateGroveAgent_RestartFromProvisioningStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -2015,7 +2016,7 @@ func TestCreateGroveAgent_RestartFromProvisioningStatus(t *testing.T) {
 		Name:            "prov-grove-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusProvisioning,
+		Phase: string(state.PhaseProvisioning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, provAgent))
 
@@ -2032,11 +2033,11 @@ func TestCreateGroveAgent_RestartFromProvisioningStatus(t *testing.T) {
 	var resp CreateAgentResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotNil(t, resp.Agent)
-	assert.Equal(t, store.AgentStatusRunning, resp.Agent.Status)
+	assert.Equal(t, string(state.PhaseRunning), resp.Agent.Phase)
 }
 
 func TestCreateGroveAgent_RestartFromPendingStatus(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -2046,7 +2047,7 @@ func TestCreateGroveAgent_RestartFromPendingStatus(t *testing.T) {
 		Name:            "pending-grove-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusPending,
+		Phase: string(state.PhaseCreated),
 	}
 	require.NoError(t, s.CreateAgent(ctx, pendingAgent))
 
@@ -2066,7 +2067,7 @@ func TestCreateGroveAgent_RestartFromPendingStatus(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCreateGroveAgent_ConfigUpdateOnRestart(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -2076,7 +2077,7 @@ func TestCreateGroveAgent_ConfigUpdateOnRestart(t *testing.T) {
 		Name:            "config-grove-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "broker-create",
-		Status:          store.AgentStatusCreated,
+		Phase: string(state.PhaseCreated),
 		AppliedConfig: &store.AgentAppliedConfig{
 			Task:   "old task",
 			Attach: false,
@@ -2108,7 +2109,7 @@ func TestCreateGroveAgent_ConfigUpdateOnRestart(t *testing.T) {
 }
 
 func TestCreateGroveAgent_BrokerIDRecovery(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -2120,7 +2121,7 @@ func TestCreateGroveAgent_BrokerIDRecovery(t *testing.T) {
 		Name:            "no-broker-grove-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "", // empty — should be recovered
-		Status:          store.AgentStatusCreated,
+		Phase: string(state.PhaseCreated),
 	}
 	require.NoError(t, s.CreateAgent(ctx, existingAgent))
 
@@ -2145,7 +2146,7 @@ func TestCreateGroveAgent_BrokerIDRecovery(t *testing.T) {
 }
 
 func TestCreateAgent_BrokerIDRecovery(t *testing.T) {
-	disp := &createAgentDispatcher{createStatus: store.AgentStatusRunning}
+	disp := &createAgentDispatcher{createPhase: string(state.PhaseRunning)}
 	srv, s, grove := setupCreateAgentServer(t, disp)
 	ctx := context.Background()
 
@@ -2155,7 +2156,7 @@ func TestCreateAgent_BrokerIDRecovery(t *testing.T) {
 		Name:            "no-broker-agent",
 		GroveID:         grove.ID,
 		RuntimeBrokerID: "", // empty — should be recovered
-		Status:          store.AgentStatusCreated,
+		Phase: string(state.PhaseCreated),
 	}
 	require.NoError(t, s.CreateAgent(ctx, existingAgent))
 
@@ -2214,7 +2215,7 @@ func TestCreateAgent_NotifyCreatesSubscription(t *testing.T) {
 		Slug:    "lead-agent",
 		Name:    "Lead Agent",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, callingAgent))
 
@@ -2349,7 +2350,7 @@ func TestCreateAgent_NotifySubscriptionCascadeOnDelete(t *testing.T) {
 		Slug:    "cascade-lead",
 		Name:    "Cascade Lead",
 		GroveID: grove.ID,
-		Status:  store.AgentStatusRunning,
+		Phase: string(state.PhaseRunning),
 	}
 	require.NoError(t, s.CreateAgent(ctx, callingAgent))
 

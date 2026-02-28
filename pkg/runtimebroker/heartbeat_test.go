@@ -203,9 +203,9 @@ func TestHeartbeatService_IncludesAgentInfo(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
 	manager := &heartbeatMockManager{
 		agents: []api.AgentInfo{
-			{Name: "agent-1", GroveID: "grove-1", Status: "running", Phase: "running", Activity: "thinking"},
-			{Name: "agent-2", GroveID: "grove-1", Status: "waiting_for_input", Phase: "running", Activity: "waiting_for_input"},
-			{Name: "agent-3", Grove: "grove-2", Status: "completed", Phase: "running", Activity: "completed"},
+			{Name: "agent-1", GroveID: "grove-1", Phase: "running", Activity: "thinking"},
+			{Name: "agent-2", GroveID: "grove-1", Phase: "running", Activity: "waiting_for_input"},
+			{Name: "agent-3", Grove: "grove-2", Phase: "running", Activity: "completed"},
 		},
 	}
 
@@ -246,21 +246,18 @@ func TestHeartbeatService_IncludesPhaseActivity(t *testing.T) {
 			{
 				Name:     "agent-structured",
 				GroveID:  "grove-1",
-				Status:   "thinking",
 				Phase:    "running",
 				Activity: "thinking",
 			},
 			{
 				Name:     "agent-waiting",
 				GroveID:  "grove-1",
-				Status:   "waiting_for_input",
 				Phase:    "running",
 				Activity: "waiting_for_input",
 			},
 			{
 				Name:    "agent-stopped",
 				GroveID: "grove-1",
-				Status:  "stopped",
 				Phase:   "stopped",
 			},
 		},

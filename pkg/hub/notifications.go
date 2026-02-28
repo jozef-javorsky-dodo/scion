@@ -97,11 +97,8 @@ func (nd *NotificationDispatcher) handleEvent(evt Event) {
 		return
 	}
 
-	// Use activity for matching when available, fall back to status
-	matchStatus := statusEvt.Status
-	if statusEvt.Activity != "" {
-		matchStatus = statusEvt.Activity
-	}
+	// Use activity for matching (notifications trigger on activity changes)
+	matchStatus := statusEvt.Activity
 
 	for i := range subs {
 		sub := &subs[i]
@@ -133,11 +130,8 @@ func (nd *NotificationDispatcher) storeAndDispatch(ctx context.Context, sub *sto
 		return
 	}
 
-	// Use activity for matching/display when available, fall back to status
-	effectiveStatus := evt.Status
-	if evt.Activity != "" {
-		effectiveStatus = evt.Activity
-	}
+	// Use activity for matching/display
+	effectiveStatus := evt.Activity
 
 	message := formatNotificationMessage(agent, effectiveStatus)
 

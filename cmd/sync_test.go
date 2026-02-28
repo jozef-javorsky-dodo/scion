@@ -111,7 +111,7 @@ func TestResolveAgentID_AgentNotRunning(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for stopped agent")
 	}
-	if err.Error() != "agent 'my-agent' is not running (status: stopped)" {
+	if err.Error() != "agent 'my-agent' is not running (phase: stopped)" {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

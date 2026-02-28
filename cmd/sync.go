@@ -23,6 +23,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/ptone/scion-agent/pkg/agent"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/hubclient"
 	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/ptone/scion-agent/pkg/transfer"
@@ -387,9 +388,10 @@ func resolveAgentID(ctx context.Context, client hubclient.Client, groveID, agent
 	// Find agent by name
 	for _, agent := range resp.Agents {
 		if agent.Name == agentName {
-			// Check agent status
-			if agent.Status != "running" {
-				return "", fmt.Errorf("agent '%s' is not running (status: %s)", agentName, agent.Status)
+			// Check agent phase — must be running to sync
+			agentPhase, _ := hubStatusToPhaseActivity(agent.Status)
+			if agentPhase != string(state.PhaseRunning) {
+				return "", fmt.Errorf("agent '%s' is not running (phase: %s)", agentName, agentPhase)
 			}
 			return agent.Slug, nil
 		}

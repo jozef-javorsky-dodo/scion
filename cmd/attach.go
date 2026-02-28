@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/agent"
+	"github.com/ptone/scion-agent/pkg/agent/state"
 	"github.com/ptone/scion-agent/pkg/config"
 	"github.com/ptone/scion-agent/pkg/runtime"
 	"github.com/ptone/scion-agent/pkg/wsclient"
@@ -126,8 +127,10 @@ func attachViaHub(hubCtx *HubContext, agentName string) error {
 		return wrapHubError(fmt.Errorf("failed to get agent '%s': %w", agentName, err))
 	}
 
-	// Check agent lifecycle status - the agent must be running to attach
-	if agent.Status != "running" {
+	// Check agent lifecycle status - the agent must be running to attach.
+	// Map the Hub Status field to phase/activity for the check.
+	agentPhase, _ := hubStatusToPhaseActivity(agent.Status)
+	if agentPhase != string(state.PhaseRunning) {
 		// Build a helpful error message with available status info
 		statusInfo := agent.Status
 		if statusInfo == "" {
@@ -136,7 +139,7 @@ func attachViaHub(hubCtx *HubContext, agentName string) error {
 		if agent.ContainerStatus != "" {
 			statusInfo += fmt.Sprintf(", container: %s", agent.ContainerStatus)
 		}
-		return fmt.Errorf("agent '%s' is not running (status: %s)\n\nStart the agent first with: scion start %s",
+		return fmt.Errorf("agent '%s' is not running (phase: %s)\n\nStart the agent first with: scion start %s",
 			agentName, statusInfo, agentName)
 	}
 

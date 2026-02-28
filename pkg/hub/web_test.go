@@ -1190,7 +1190,7 @@ func TestSSEHandler_EventDelivery(t *testing.T) {
 	pub.publish("grove.test123.agent.status", AgentStatusEvent{
 		AgentID: "agent-1",
 		GroveID: "test123",
-		Status:  "running",
+		Phase:   "running",
 	})
 
 	// Read the SSE frame from the response
@@ -1205,7 +1205,7 @@ func TestSSEHandler_EventDelivery(t *testing.T) {
 	assert.Contains(t, frame, "data: ")
 	assert.Contains(t, frame, `"subject":"grove.test123.agent.status"`)
 	assert.Contains(t, frame, `"agentId":"agent-1"`)
-	assert.Contains(t, frame, `"status":"running"`)
+	assert.Contains(t, frame, `"phase":"running"`)
 }
 
 func TestSSEHandler_SubjectValidation(t *testing.T) {

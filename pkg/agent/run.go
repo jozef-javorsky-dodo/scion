@@ -50,7 +50,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 						if opts.Detached != nil {
 							a.Detached = *opts.Detached
 						}
-						a.Status = "running"
+						a.Phase = "running"
 						return &a, nil
 					}
 				}
@@ -517,13 +517,13 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 			if a.ContainerID == id || strings.EqualFold(a.Name, opts.Name) {
 				a.Detached = detached
 				a.Warnings = warnings
-				a.Status = status
+				a.Phase = status
 				return &a, nil
 			}
 		}
 	}
 
-	return &api.AgentInfo{ID: id, Name: opts.Name, Status: status, Detached: detached, Warnings: warnings}, nil
+	return &api.AgentInfo{ID: id, Name: opts.Name, Phase: status, Detached: detached, Warnings: warnings}, nil
 }
 
 // extractWorkspaceFromVolumes finds a volume mounted to /workspace and returns its source path.

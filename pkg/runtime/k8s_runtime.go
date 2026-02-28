@@ -1065,7 +1065,7 @@ func (r *KubernetesRuntime) List(ctx context.Context, labelFilter map[string]str
 			Labels:          p.Labels,
 			Annotations:     p.Annotations,
 			ContainerStatus: status,
-			Status:          agentStatus,
+			Phase:           agentStatus,
 			Image:           p.Spec.Containers[0].Image,
 			Runtime:         r.Name(),
 		})

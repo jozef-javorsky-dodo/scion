@@ -320,10 +320,10 @@ func TestHeartbeatService_GroveFilter(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
 	manager := &heartbeatMockManager{
 		agents: []api.AgentInfo{
-			{Name: "agent-1", GroveID: "grove-hub1", Status: "running"},
-			{Name: "agent-2", GroveID: "grove-hub1", Status: "running"},
-			{Name: "agent-3", GroveID: "grove-hub2", Status: "running"},
-			{Name: "agent-4", GroveID: "grove-shared", Status: "running"},
+			{Name: "agent-1", GroveID: "grove-hub1", Phase: "running"},
+			{Name: "agent-2", GroveID: "grove-hub1", Phase: "running"},
+			{Name: "agent-3", GroveID: "grove-hub2", Phase: "running"},
+			{Name: "agent-4", GroveID: "grove-shared", Phase: "running"},
 		},
 	}
 
@@ -363,8 +363,8 @@ func TestHeartbeatService_NilGroveFilter(t *testing.T) {
 	client := &mockRuntimeBrokerService{}
 	manager := &heartbeatMockManager{
 		agents: []api.AgentInfo{
-			{Name: "agent-1", GroveID: "grove-1", Status: "running"},
-			{Name: "agent-2", GroveID: "grove-2", Status: "running"},
+			{Name: "agent-1", GroveID: "grove-1", Phase: "running"},
+			{Name: "agent-2", GroveID: "grove-2", Phase: "running"},
 		},
 	}
 

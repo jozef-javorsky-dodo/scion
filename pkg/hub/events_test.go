@@ -69,7 +69,7 @@ func TestChannelEventPublisher_PublishAgentStatus(t *testing.T) {
 	agent := &store.Agent{
 		ID:      "a1",
 		GroveID: "g1",
-		Status:  "running",
+		Phase:   "running",
 	}
 
 	pub.PublishAgentStatus(context.Background(), agent)
@@ -84,7 +84,7 @@ func TestChannelEventPublisher_PublishAgentStatus(t *testing.T) {
 		if err := json.Unmarshal(evt.Data, &data); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		if data.AgentID != "a1" || data.Status != "running" || data.GroveID != "g1" {
+		if data.AgentID != "a1" || data.Phase != "running" || data.GroveID != "g1" {
 			t.Errorf("unexpected event data: %+v", data)
 		}
 	case <-time.After(time.Second):
@@ -253,7 +253,7 @@ func TestChannelEventPublisher_Backpressure(t *testing.T) {
 	agent := &store.Agent{
 		ID:      "a1",
 		GroveID: "g1",
-		Status:  "running",
+		Phase:   "running",
 	}
 
 	// Fill the buffer (capacity 64) and then some
@@ -294,7 +294,7 @@ func TestChannelEventPublisher_SubscribeUnsubscribe(t *testing.T) {
 	agent := &store.Agent{
 		ID:      "a1",
 		GroveID: "g1",
-		Status:  "running",
+		Phase:   "running",
 	}
 
 	// Should receive before unsub
