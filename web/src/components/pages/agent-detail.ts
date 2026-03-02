@@ -714,10 +714,6 @@ export class ScionPageAgentDetail extends LitElement {
             <span class="info-value">${this.grove?.name || this.agent.groveId}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">Status</span>
-            <span class="info-value">${getAgentDisplayStatus(this.agent) || 'Unknown'}</span>
-          </div>
-          <div class="info-item">
             <span class="info-label">Created</span>
             <span class="info-value">${this.formatDate(this.agent.createdAt)}</span>
           </div>
@@ -743,31 +739,48 @@ export class ScionPageAgentDetail extends LitElement {
           : ''}
       </div>
 
-      <!-- Status Timeline -->
+      <!-- Status -->
       <div class="card">
         <h3 class="card-title">Status</h3>
-        <div class="status-timeline">
-          <div class="timeline-item">
-            <div class="timeline-dot ${isAgentRunning(this.agent) ? 'active' : ''}"></div>
-            <div class="timeline-content">
-              <div class="timeline-title">
-                ${(() => { const s = getAgentDisplayStatus(this.agent); return s.charAt(0).toUpperCase() + s.slice(1); })()}
-              </div>
-              <div class="timeline-time">
-                Last updated:
-                ${this.agent.lastSeen
-                  ? this.formatRelativeTime(this.agent.lastSeen)
-                  : this.formatRelativeTime(this.agent.updatedAt)}
-              </div>
-            </div>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">Phase</span>
+            <span class="info-value">
+              <scion-status-badge
+                status=${this.agent.phase as StatusType}
+                label=${this.agent.phase}
+                size="small"
+              ></scion-status-badge>
+            </span>
           </div>
-          <div class="timeline-item">
-            <div class="timeline-dot"></div>
-            <div class="timeline-content">
-              <div class="timeline-title">Created</div>
-              <div class="timeline-time">${this.formatDate(this.agent.createdAt)}</div>
-            </div>
+          <div class="info-item">
+            <span class="info-label">Activity</span>
+            <span class="info-value">
+              ${this.agent.activity
+                ? html`<scion-status-badge
+                    status=${this.agent.activity as StatusType}
+                    label=${this.agent.activity}
+                    size="small"
+                  ></scion-status-badge>`
+                : html`<span style="color: var(--scion-text-muted, #64748b);">—</span>`}
+            </span>
           </div>
+          ${this.agent.detail?.toolName
+            ? html`
+                <div class="info-item">
+                  <span class="info-label">Tool</span>
+                  <span class="info-value mono">${this.agent.detail.toolName}</span>
+                </div>
+              `
+            : ''}
+          ${this.agent.detail?.message && this.agent.phase !== 'error'
+            ? html`
+                <div class="info-item">
+                  <span class="info-label">Detail</span>
+                  <span class="info-value">${this.agent.detail.message}</span>
+                </div>
+              `
+            : ''}
         </div>
       </div>
     `;
