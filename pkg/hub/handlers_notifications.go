@@ -15,6 +15,7 @@
 package hub
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/ptone/scion-agent/pkg/store"
@@ -97,6 +98,7 @@ func (s *Server) handleNotificationRoutes(w http.ResponseWriter, r *http.Request
 			writeErrorFromErr(w, err, "")
 			return
 		}
+		slog.Info("All notifications acknowledged", "userID", user.ID())
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}
@@ -107,6 +109,7 @@ func (s *Server) handleNotificationRoutes(w http.ResponseWriter, r *http.Request
 			writeErrorFromErr(w, err, "")
 			return
 		}
+		slog.Info("Notification acknowledged", "notificationID", id, "userID", user.ID())
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}

@@ -165,12 +165,15 @@ func (nd *NotificationDispatcher) storeAndDispatch(ctx context.Context, sub *sto
 		return
 	}
 
+	nd.log.Info("Notification created",
+		"notificationID", notif.ID, "agentID", evt.AgentID, "subscriber", sub.SubscriberType+":"+sub.SubscriberID, "status", notif.Status)
+
 	switch sub.SubscriberType {
 	case store.SubscriberTypeAgent:
 		nd.dispatchToAgent(ctx, sub, notif)
 	case store.SubscriberTypeUser:
 		nd.events.PublishNotification(ctx, notif)
-		nd.log.Debug("User notification published via SSE",
+		nd.log.Info("Notification dispatched to user via SSE",
 			"subscriberID", sub.SubscriberID, "notificationID", notif.ID)
 	default:
 		nd.log.Warn("Unknown subscriber type", "type", sub.SubscriberType)
@@ -215,6 +218,9 @@ func (nd *NotificationDispatcher) dispatchToAgent(ctx context.Context, sub *stor
 	if err := dispatcher.DispatchAgentMessage(ctx, subscriber, prefixedMessage, false); err != nil {
 		nd.log.Error("Failed to dispatch notification to agent",
 			"subscriberID", sub.SubscriberID, "error", err)
+	} else {
+		nd.log.Info("Notification dispatched to agent",
+			"subscriberID", sub.SubscriberID, "notificationID", notif.ID, "brokerID", subscriber.RuntimeBrokerID)
 	}
 
 	// Mark dispatched regardless of success (best-effort)
