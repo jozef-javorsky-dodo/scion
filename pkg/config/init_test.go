@@ -589,3 +589,181 @@ func TestInitProject_UsesDetectedRuntime(t *testing.T) {
 		t.Errorf("expected runtime 'podman' from detection, got %q", localProfile.Runtime)
 	}
 }
+
+func TestInitMachine_RestoresDeletedFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	mockRuntimeDetection(t, "docker")
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	// First init seeds everything
+	if err := InitMachine(GetMockHarnesses()); err != nil {
+		t.Fatalf("first InitMachine failed: %v", err)
+	}
+
+	globalDir := filepath.Join(tmpDir, GlobalDir)
+	defaultTplDir := filepath.Join(globalDir, "templates", "default")
+
+	// Read the original agents.md content
+	agentsMdPath := filepath.Join(defaultTplDir, "agents.md")
+	originalContent, err := os.ReadFile(agentsMdPath)
+	if err != nil {
+		t.Fatalf("failed to read agents.md: %v", err)
+	}
+	if len(originalContent) == 0 {
+		t.Fatal("expected agents.md to have content")
+	}
+
+	// Delete agents.md
+	if err := os.Remove(agentsMdPath); err != nil {
+		t.Fatalf("failed to delete agents.md: %v", err)
+	}
+	if _, err := os.Stat(agentsMdPath); !os.IsNotExist(err) {
+		t.Fatal("expected agents.md to be deleted")
+	}
+
+	// Re-run init — should restore the deleted file
+	if err := InitMachine(GetMockHarnesses()); err != nil {
+		t.Fatalf("second InitMachine failed: %v", err)
+	}
+
+	restoredContent, err := os.ReadFile(agentsMdPath)
+	if err != nil {
+		t.Fatalf("agents.md was not restored after re-init: %v", err)
+	}
+	if string(restoredContent) != string(originalContent) {
+		t.Error("restored agents.md content does not match original embedded content")
+	}
+}
+
+func TestInitMachine_RestoresDeletedCommonFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	mockRuntimeDetection(t, "docker")
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	if err := InitMachine(GetMockHarnesses()); err != nil {
+		t.Fatalf("first InitMachine failed: %v", err)
+	}
+
+	globalDir := filepath.Join(tmpDir, GlobalDir)
+	homeDir := filepath.Join(globalDir, "templates", "default", "home")
+
+	// Delete common home files
+	filesToDelete := []string{".tmux.conf", ".zshrc", ".gitconfig"}
+	for _, f := range filesToDelete {
+		p := filepath.Join(homeDir, f)
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			continue // skip if it wasn't seeded
+		}
+		if err := os.Remove(p); err != nil {
+			t.Fatalf("failed to delete %s: %v", f, err)
+		}
+	}
+
+	// Re-run init — should restore deleted files
+	if err := InitMachine(GetMockHarnesses()); err != nil {
+		t.Fatalf("second InitMachine failed: %v", err)
+	}
+
+	for _, f := range filesToDelete {
+		p := filepath.Join(homeDir, f)
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			t.Errorf("expected %s to be restored after re-init", f)
+		}
+	}
+}
+
+func TestInitMachine_PreservesCustomizedFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	mockRuntimeDetection(t, "docker")
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	if err := InitMachine(GetMockHarnesses()); err != nil {
+		t.Fatalf("first InitMachine failed: %v", err)
+	}
+
+	globalDir := filepath.Join(tmpDir, GlobalDir)
+
+	// Customize agents.md
+	agentsMdPath := filepath.Join(globalDir, "templates", "default", "agents.md")
+	customContent := "my custom agent instructions"
+	if err := os.WriteFile(agentsMdPath, []byte(customContent), 0644); err != nil {
+		t.Fatalf("failed to write custom agents.md: %v", err)
+	}
+
+	// Customize home/.tmux.conf
+	tmuxPath := filepath.Join(globalDir, "templates", "default", "home", ".tmux.conf")
+	if err := os.WriteFile(tmuxPath, []byte("custom tmux"), 0644); err != nil {
+		t.Fatalf("failed to write custom .tmux.conf: %v", err)
+	}
+
+	// Re-run init — should NOT overwrite customized files
+	if err := InitMachine(GetMockHarnesses()); err != nil {
+		t.Fatalf("second InitMachine failed: %v", err)
+	}
+
+	data, err := os.ReadFile(agentsMdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != customContent {
+		t.Error("re-init overwrote customized agents.md")
+	}
+
+	data, err = os.ReadFile(tmuxPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "custom tmux" {
+		t.Error("re-init overwrote customized .tmux.conf")
+	}
+}
+
+func TestInitMachine_PreservesSettings(t *testing.T) {
+	tmpDir := t.TempDir()
+	mockRuntimeDetection(t, "docker")
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	if err := InitMachine(GetMockHarnesses()); err != nil {
+		t.Fatalf("first InitMachine failed: %v", err)
+	}
+
+	globalDir := filepath.Join(tmpDir, GlobalDir)
+	settingsPath := filepath.Join(globalDir, "settings.yaml")
+
+	// Read original settings
+	originalSettings, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Customize settings
+	customSettings := string(originalSettings) + "\n# custom comment\n"
+	if err := os.WriteFile(settingsPath, []byte(customSettings), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-run init — should NOT overwrite settings
+	if err := InitMachine(GetMockHarnesses()); err != nil {
+		t.Fatalf("second InitMachine failed: %v", err)
+	}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != customSettings {
+		t.Error("re-init overwrote customized settings.yaml")
+	}
+}
