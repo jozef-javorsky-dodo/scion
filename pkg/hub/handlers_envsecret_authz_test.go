@@ -473,8 +473,55 @@ func TestSecret_UserScope_AdminAccess(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if resp.ScopeID != "dev-user" {
-		t.Errorf("expected scopeId 'dev-user', got %q", resp.ScopeID)
+	// Admin users get an unscoped list (empty scopeId) so they can see all user secrets.
+	if resp.ScopeID != "" {
+		t.Errorf("expected empty scopeId for admin, got %q", resp.ScopeID)
+	}
+}
+
+func TestSecret_UserScope_AdminSeesOtherUserSecrets(t *testing.T) {
+	srv, s := testServer(t)
+	srv.SetSecretBackend(secret.NewLocalBackend(s))
+	ctx := context.Background()
+
+	// Create a member user and store a secret scoped to them.
+	member := &store.User{
+		ID: "member-other-1", Email: "other@example.com", DisplayName: "Other User",
+		Role: store.UserRoleMember, Status: "active", Created: time.Now(),
+	}
+	if err := s.CreateUser(ctx, member); err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	// Store a secret as the member.
+	if err := s.CreateSecret(ctx, &store.Secret{
+		ID: "sec-other-1", Key: "MEMBER_KEY", Scope: store.ScopeUser,
+		ScopeID: member.ID, SecretType: store.SecretTypeEnvironment,
+		EncryptedValue: "val", Version: 1, Created: time.Now(), Updated: time.Now(),
+	}); err != nil {
+		t.Fatalf("failed to set secret: %v", err)
+	}
+
+	// Admin (dev-user) should see the member's secret.
+	rec := doRequest(t, srv, http.MethodGet, "/api/v1/secrets?scope=user", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp ListSecretsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	found := false
+	for _, sec := range resp.Secrets {
+		if sec.Key == "MEMBER_KEY" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("admin should see other user's secret MEMBER_KEY, but it was not in the list: %+v", resp.Secrets)
 	}
 }
 

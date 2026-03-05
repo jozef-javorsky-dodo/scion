@@ -4666,6 +4666,15 @@ func (s *Server) listSecrets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Admin users listing user-scoped secrets can see all users' secrets.
+	// This handles the dev-auth case where the dev user has a different ID
+	// than OAuth users who may have stored secrets via CLI.
+	if scope == store.ScopeUser {
+		if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil && userIdent.Role() == store.UserRoleAdmin {
+			scopeID = ""
+		}
+	}
+
 	metas, err := s.secretBackend.List(ctx, secret.Filter{
 		Scope:   scope,
 		ScopeID: scopeID,
