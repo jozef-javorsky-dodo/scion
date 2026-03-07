@@ -761,11 +761,32 @@ func runBrokerDeregister(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// isServerDaemonManagingBroker checks if the combined server daemon is running
+// and the broker health endpoint is responding, indicating the broker is managed
+// as part of the combined server process.
+func isServerDaemonManagingBroker(globalDir string) (running bool, pid int) {
+	serverRunning, serverPID, _ := daemon.StatusComponent(serverDaemonComponent, globalDir)
+	if !serverRunning {
+		return false, 0
+	}
+	// Confirm broker is actually responding on its health endpoint
+	_, err := checkLocalBrokerServer(DefaultBrokerPort)
+	if err != nil {
+		return false, 0
+	}
+	return true, serverPID
+}
+
 func runBrokerStart(cmd *cobra.Command, args []string) error {
 	// Get global directory for daemon files
 	globalDir, err := config.GetGlobalDir()
 	if err != nil {
 		return fmt.Errorf("failed to get global directory: %w", err)
+	}
+
+	// Check if the broker is managed by the combined server
+	if managed, pid := isServerDaemonManagingBroker(globalDir); managed {
+		return fmt.Errorf("the runtime broker is managed by the combined server process (PID: %d).\n\nUse 'scion server start/stop/restart' to manage the server, or 'scion broker status' to check broker status.", pid)
 	}
 
 	// Foreground mode - just run the server command directly
@@ -853,6 +874,11 @@ func runBrokerStop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get global directory: %w", err)
 	}
 
+	// Check if the broker is managed by the combined server
+	if managed, pid := isServerDaemonManagingBroker(globalDir); managed {
+		return fmt.Errorf("the runtime broker is managed by the combined server process (PID: %d).\n\nUse 'scion server stop' to stop the server, or 'scion broker status' to check broker status.", pid)
+	}
+
 	// Check if daemon is running
 	running, pid, _ := daemon.Status(globalDir)
 	if !running {
@@ -886,6 +912,11 @@ func runBrokerRestart(cmd *cobra.Command, args []string) error {
 	globalDir, err := config.GetGlobalDir()
 	if err != nil {
 		return fmt.Errorf("failed to get global directory: %w", err)
+	}
+
+	// Check if the broker is managed by the combined server
+	if managed, pid := isServerDaemonManagingBroker(globalDir); managed {
+		return fmt.Errorf("the runtime broker is managed by the combined server process (PID: %d).\n\nUse 'scion server restart' to restart the server, or 'scion broker status' to check broker status.", pid)
 	}
 
 	// Check if daemon is running
@@ -1285,13 +1316,23 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 	// Collect status information
 	status := brokerStatusInfo{}
 
-	// Check daemon status
+	// Check daemon status - first check for standalone broker daemon
 	running, pid, _ := daemon.Status(globalDir)
 	status.DaemonRunning = running
 	status.DaemonPID = pid
 	if running {
 		status.LogFile = daemon.GetLogPath(globalDir)
 		status.PIDFile = daemon.GetPIDPath(globalDir)
+	} else {
+		// Check if the combined server daemon is managing the broker
+		serverRunning, serverPID, _ := daemon.StatusComponent(serverDaemonComponent, globalDir)
+		if serverRunning {
+			status.DaemonRunning = true
+			status.DaemonPID = serverPID
+			status.ManagedByServer = true
+			status.LogFile = daemon.GetLogPathComponent(serverDaemonComponent, globalDir)
+			status.PIDFile = daemon.GetPIDPathComponent(serverDaemonComponent, globalDir)
+		}
 	}
 
 	// Check if broker server is responding (could be foreground or daemon)
@@ -1416,6 +1457,9 @@ func runBrokerStatus(cmd *cobra.Command, args []string) error {
 
 	if status.DaemonRunning {
 		fmt.Printf("  Daemon PID:  %d\n", status.DaemonPID)
+		if status.ManagedByServer {
+			fmt.Printf("  Mode:        combined server (use 'scion server' to manage)\n")
+		}
 		fmt.Printf("  Log file:    %s\n", status.LogFile)
 	} else if status.ServerRunning {
 		fmt.Printf("  Mode:        foreground (or external)\n")
@@ -1689,10 +1733,11 @@ type brokerStatusInfo struct {
 	ServerVersion string `json:"serverVersion,omitempty"`
 
 	// Daemon status
-	DaemonRunning bool   `json:"daemonRunning"`
-	DaemonPID     int    `json:"daemonPid,omitempty"`
-	LogFile       string `json:"logFile,omitempty"`
-	PIDFile       string `json:"pidFile,omitempty"`
+	DaemonRunning   bool   `json:"daemonRunning"`
+	DaemonPID       int    `json:"daemonPid,omitempty"`
+	ManagedByServer bool   `json:"managedByServer,omitempty"`
+	LogFile         string `json:"logFile,omitempty"`
+	PIDFile         string `json:"pidFile,omitempty"`
 
 	// Registration status
 	Registered      bool   `json:"registered"`
