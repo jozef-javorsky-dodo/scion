@@ -308,6 +308,12 @@ func IsCloudLoggingEnabled() bool {
 	return isCloudLoggingEnabled()
 }
 
+// ResolveProjectID returns the GCP project ID from environment variables.
+// Returns empty string if no project is configured.
+func ResolveProjectID() string {
+	return resolveProjectID()
+}
+
 // ResolveLogLevel returns the slog.Level based on the debug flag and env var.
 func ResolveLogLevel(debug bool) slog.Level {
 	if debug || os.Getenv("SCION_LOG_LEVEL") == "debug" {

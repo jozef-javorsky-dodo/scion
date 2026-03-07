@@ -15,9 +15,13 @@
 package hubclient
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/ptone/scion-agent/pkg/api"
@@ -65,6 +69,14 @@ type AgentService interface {
 
 	// GetLogs retrieves agent logs.
 	GetLogs(ctx context.Context, agentID string, opts *GetLogsOptions) (string, error)
+
+	// GetCloudLogs retrieves structured log entries from Cloud Logging.
+	GetCloudLogs(ctx context.Context, agentID string, opts *GetCloudLogsOptions) (*CloudLogsResponse, error)
+
+	// StreamCloudLogs opens an SSE connection for streaming log entries.
+	// The handler is called for each log entry received. Blocks until the
+	// context is cancelled or the server closes the connection.
+	StreamCloudLogs(ctx context.Context, agentID string, opts *GetCloudLogsOptions, handler func(CloudLogEntry)) error
 }
 
 // agentService is the implementation of AgentService.
@@ -415,4 +427,109 @@ func (s *agentService) GetLogs(ctx context.Context, agentID string, opts *GetLog
 		return "", err
 	}
 	return result.Logs, nil
+}
+
+// GetCloudLogsOptions configures cloud log retrieval.
+type GetCloudLogsOptions struct {
+	Tail     int
+	Since    string
+	Until    string
+	Severity string
+}
+
+// CloudLogsResponse is the response from querying cloud logs.
+type CloudLogsResponse struct {
+	Entries       []CloudLogEntry `json:"entries"`
+	NextPageToken string          `json:"nextPageToken,omitempty"`
+	HasMore       bool            `json:"hasMore"`
+}
+
+// CloudLogEntry represents a structured log entry from Cloud Logging.
+type CloudLogEntry struct {
+	Timestamp      time.Time              `json:"timestamp"`
+	Severity       string                 `json:"severity"`
+	Message        string                 `json:"message"`
+	Labels         map[string]string      `json:"labels,omitempty"`
+	Resource       map[string]interface{} `json:"resource,omitempty"`
+	JSONPayload    map[string]interface{} `json:"jsonPayload,omitempty"`
+	InsertID       string                 `json:"insertId"`
+	SourceLocation *SourceLocation        `json:"sourceLocation,omitempty"`
+}
+
+// SourceLocation identifies the source code location of a log entry.
+type SourceLocation struct {
+	File     string `json:"file,omitempty"`
+	Line     string `json:"line,omitempty"`
+	Function string `json:"function,omitempty"`
+}
+
+// GetCloudLogs retrieves structured log entries from Cloud Logging.
+func (s *agentService) GetCloudLogs(ctx context.Context, agentID string, opts *GetCloudLogsOptions) (*CloudLogsResponse, error) {
+	query := url.Values{}
+	if opts != nil {
+		if opts.Tail > 0 {
+			query.Set("tail", fmt.Sprintf("%d", opts.Tail))
+		}
+		if opts.Since != "" {
+			query.Set("since", opts.Since)
+		}
+		if opts.Until != "" {
+			query.Set("until", opts.Until)
+		}
+		if opts.Severity != "" {
+			query.Set("severity", opts.Severity)
+		}
+	}
+
+	resp, err := s.c.transport.GetWithQuery(ctx, s.agentPath(agentID)+"/cloud-logs", query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return apiclient.DecodeResponse[CloudLogsResponse](resp)
+}
+
+// StreamCloudLogs opens an SSE connection for streaming cloud log entries.
+func (s *agentService) StreamCloudLogs(ctx context.Context, agentID string, opts *GetCloudLogsOptions, handler func(CloudLogEntry)) error {
+	query := url.Values{}
+	if opts != nil {
+		if opts.Severity != "" {
+			query.Set("severity", opts.Severity)
+		}
+	}
+
+	headers := http.Header{}
+	headers.Set("Accept", "text/event-stream")
+
+	resp, err := s.c.transport.GetWithQuery(ctx, s.agentPath(agentID)+"/cloud-logs/stream", query, headers)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return apiclient.CheckResponse(resp)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Skip empty lines, heartbeats, and event type lines
+		if line == "" || strings.HasPrefix(line, ":") || strings.HasPrefix(line, "event:") {
+			continue
+		}
+
+		// Parse data lines
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			var entry CloudLogEntry
+			if err := json.Unmarshal([]byte(data), &entry); err != nil {
+				continue
+			}
+			handler(entry)
+		}
+	}
+
+	return scanner.Err()
 }

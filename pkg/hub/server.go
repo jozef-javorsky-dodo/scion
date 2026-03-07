@@ -383,6 +383,8 @@ type Server struct {
 	scheduler                 *Scheduler          // Unified scheduler for recurring tasks
 	cleanupOnce               sync.Once           // Ensures CleanupResources runs only once
 
+	logQueryService *LogQueryService // Cloud Logging query service (nil = disabled)
+
 	// Dedicated request logger (nil = disabled)
 	requestLogger *slog.Logger
 
@@ -533,6 +535,17 @@ func New(cfg ServerConfig, s store.Store) *Server {
 		TrustedProxies: cfg.TrustedProxies,
 		Debug:          cfg.Debug,
 		Logger:         srv.authLog,
+	}
+
+	// Initialize Cloud Logging query service (optional, gated on GCP project ID)
+	if projectID := logging.ResolveProjectID(); projectID != "" {
+		logQuerySvc, err := NewLogQueryService(ctx, projectID)
+		if err != nil {
+			slog.Warn("Failed to initialize Cloud Logging query service", "error", err)
+		} else {
+			srv.logQueryService = logQuerySvc
+			slog.Info("Cloud Logging query service initialized", "project", projectID)
+		}
 	}
 
 	srv.registerRoutes()
@@ -1134,6 +1147,9 @@ func (s *Server) CleanupResources(ctx context.Context) error {
 		}
 		if s.events != nil {
 			s.events.Close()
+		}
+		if s.logQueryService != nil {
+			s.logQueryService.Close()
 		}
 	})
 	return nil

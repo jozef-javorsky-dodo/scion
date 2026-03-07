@@ -1046,6 +1046,16 @@ func (s *Server) handleAgentByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle cloud-logs (GET endpoints, handled before the POST-only action gate)
+	if action == "cloud-logs" {
+		s.handleAgentCloudLogs(w, r, id)
+		return
+	}
+	if action == "cloud-logs/stream" {
+		s.handleAgentCloudLogsStream(w, r, id)
+		return
+	}
+
 	// Handle actions
 	if action != "" {
 		s.handleAgentAction(w, r, id, action)
@@ -2754,6 +2764,21 @@ func (s *Server) deleteGroveAgent(w http.ResponseWriter, r *http.Request, groveI
 
 // handleGroveAgentAction handles actions on agents within a grove
 func (s *Server) handleGroveAgentAction(w http.ResponseWriter, r *http.Request, groveID, agentID, action string) {
+	// Cloud-logs actions are GET endpoints; handle before the POST-only gate.
+	if action == "cloud-logs" || action == "cloud-logs/stream" {
+		resolvedAgent, err := s.resolveGroveAgent(r.Context(), groveID, agentID)
+		if err != nil {
+			writeErrorFromErr(w, err, "")
+			return
+		}
+		if action == "cloud-logs" {
+			s.handleAgentCloudLogs(w, r, resolvedAgent.ID)
+		} else {
+			s.handleAgentCloudLogsStream(w, r, resolvedAgent.ID)
+		}
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		MethodNotAllowed(w)
 		return
