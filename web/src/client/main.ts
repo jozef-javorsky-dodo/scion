@@ -98,6 +98,9 @@ import '../components/profile/profile-nav.js';
 /** Current authenticated user, fetched once on init */
 let currentUser: User | null = null;
 
+/** SSR-prefetched page data, consumed once on initial render */
+let ssrPageData: PageData | null = null;
+
 /**
  * Fetch the current authenticated user from the backend session.
  * Returns null if not authenticated.
@@ -175,6 +178,8 @@ async function init(): Promise<void> {
     if (initialData.user) {
       currentUser = initialData.user;
     }
+    // Preserve the full SSR payload so page components can use prefetched data.
+    ssrPageData = initialData;
     if (initialData.data) {
       const pageDataObj = initialData.data as {
         agents?: import('../shared/types.js').Agent[];
@@ -287,12 +292,20 @@ function renderRoute(path: string): void {
   // Clear previous content
   appContainer.innerHTML = '';
 
-  // Build page data with current user context for page components
+  // Build page data with current user context for page components.
+  // Include SSR-prefetched data on the initial render so page components
+  // can skip redundant API fetches.
+  const hasSsrData = ssrPageData && ssrPageData.path === path && ssrPageData.data;
   const pageData: PageData = {
     path,
     title: 'Scion',
     user: currentUser || undefined,
+    data: hasSsrData ? ssrPageData!.data : undefined,
   };
+  // Consume SSR data so it is not reused on subsequent client-side navigations.
+  if (hasSsrData) {
+    ssrPageData = null;
+  }
 
   // Block non-admin users from admin-only routes
   if (ADMIN_ROUTES.has(tag) && currentUser?.role !== 'admin') {

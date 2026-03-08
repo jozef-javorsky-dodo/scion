@@ -595,16 +595,22 @@ export class ScionPageAgentDetail extends LitElement {
     this.error = null;
 
     try {
-      const agentResponse = await apiFetch(`/api/v1/agents/${this.agentId}`);
+      // Use SSR-prefetched agent data when available to avoid a redundant fetch.
+      const ssrAgent = this.pageData?.data as Agent | undefined;
+      if (ssrAgent && ssrAgent.id === this.agentId) {
+        this.agent = ssrAgent;
+      } else {
+        const agentResponse = await apiFetch(`/api/v1/agents/${this.agentId}`);
 
-      if (!agentResponse.ok) {
-        const errorData = (await agentResponse.json().catch(() => ({}))) as { message?: string };
-        throw new Error(
-          errorData.message || `HTTP ${agentResponse.status}: ${agentResponse.statusText}`
-        );
+        if (!agentResponse.ok) {
+          const errorData = (await agentResponse.json().catch(() => ({}))) as { message?: string };
+          throw new Error(
+            errorData.message || `HTTP ${agentResponse.status}: ${agentResponse.statusText}`
+          );
+        }
+
+        this.agent = (await agentResponse.json()) as Agent;
       }
-
-      this.agent = (await agentResponse.json()) as Agent;
 
       if (this.agent.groveId) {
         stateManager.setScope({
@@ -614,29 +620,41 @@ export class ScionPageAgentDetail extends LitElement {
         });
       }
 
+      // Fetch grove and notifications in parallel — they are independent.
+      const parallel: Promise<void>[] = [];
+
       if (this.agent.groveId) {
-        try {
-          const groveResponse = await apiFetch(`/api/v1/groves/${this.agent.groveId}`);
-          if (groveResponse.ok) {
-            this.grove = (await groveResponse.json()) as Grove;
-          }
-        } catch {
-          // Grove loading is optional
-        }
+        const groveId = this.agent.groveId;
+        parallel.push(
+          apiFetch(`/api/v1/groves/${groveId}`)
+            .then(async (groveResponse) => {
+              if (groveResponse.ok) {
+                this.grove = (await groveResponse.json()) as Grove;
+              }
+            })
+            .catch(() => {
+              // Grove loading is optional
+            })
+        );
       }
 
       if (this.pageData?.user) {
-        try {
-          const notifRes = await apiFetch(`/api/v1/notifications?agentId=${this.agentId}`);
-          if (notifRes.ok) {
-            const data = (await notifRes.json()) as AgentNotificationsResponse;
-            this.userNotifications = data.userNotifications ?? [];
-            this.agentNotifications = data.agentNotifications ?? [];
-          }
-        } catch {
-          // Notification loading is optional
-        }
+        parallel.push(
+          apiFetch(`/api/v1/notifications?agentId=${this.agentId}`)
+            .then(async (notifRes) => {
+              if (notifRes.ok) {
+                const data = (await notifRes.json()) as AgentNotificationsResponse;
+                this.userNotifications = data.userNotifications ?? [];
+                this.agentNotifications = data.agentNotifications ?? [];
+              }
+            })
+            .catch(() => {
+              // Notification loading is optional
+            })
+        );
       }
+
+      await Promise.all(parallel);
 
       stateManager.seedAgents([this.agent]);
       if (this.grove) {
