@@ -13,7 +13,7 @@ This document outlines some of the core principles and philosophy that guide the
 
 As stated in the readme, as the frontier models capabilities continue to improve, they will become more capable of taking higher level intent and deciding more complex ways of fulfilling it. This means that the explicit structure of complex harnesses, protocols, etc may matter less than open and flexible substrates for agents to collaborate in. To this end Scion is not attempting to be the full stack solution for multi-agent solutions. It focuses on being a "hypervisor for agents". Multi-agent system components such as agent memory, agent chatrooms, task management can be integrated as orthogonal concerns to be integrated into a solution that uses Scion.
 
-Part of this improvement in Agents and models is that Agents, in the right environment, are getting better at learning as needed. Concretely, in Scion, agents are able to use **Progressive Skills** by using the `scion --help` command to dynamically learn how to use the tool, which demonsrates another step in the evolution from MCP -> SKILLS.md -> `<cli> --help` as a technique.
+Part of this improvement in agents and models is that agents, in the right environment, are getting better at learning as needed. Concretely, in Scion, agents are able to use **Progressive Skills** by using the `scion --help` command to dynamically learn how to use the tool, which demonstrates another step in the evolution from MCP -> SKILLS.md -> `<cli> --help` as a technique.
 
 ### Isolation Over Constraints
 
