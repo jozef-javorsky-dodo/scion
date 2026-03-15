@@ -14,7 +14,12 @@
 
 package runtimebroker
 
-import "github.com/GoogleCloudPlatform/scion/pkg/config"
+import (
+	"net"
+	"net/url"
+
+	"github.com/GoogleCloudPlatform/scion/pkg/config"
+)
 
 const redactedEnvValue = "<redacted>"
 
@@ -89,7 +94,26 @@ func applyContainerBridgeOverride(endpoint, containerHubEndpoint, runtimeName st
 	if containerHubEndpoint == "" || runtimeName == "kubernetes" || !isLocalhostEndpoint(endpoint) {
 		return endpoint
 	}
-	return containerHubEndpoint
+	// Preserve the port from the actual endpoint rather than using the
+	// pre-computed containerHubEndpoint wholesale. The containerHubEndpoint
+	// is computed once at server startup and may have a different port
+	// (e.g. standalone hub port 9810) than the endpoint being overridden
+	// (e.g. combo-mode web port 8080).
+	epURL, err := url.Parse(endpoint)
+	if err != nil {
+		return containerHubEndpoint
+	}
+	bridgeURL, err := url.Parse(containerHubEndpoint)
+	if err != nil {
+		return containerHubEndpoint
+	}
+	port := epURL.Port()
+	if port == "" {
+		// No explicit port in endpoint; fall back to the pre-computed value.
+		return containerHubEndpoint
+	}
+	bridgeURL.Host = net.JoinHostPort(bridgeURL.Hostname(), port)
+	return bridgeURL.String()
 }
 
 func redactEnvValueForLog(key, value string) string {

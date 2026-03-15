@@ -1118,10 +1118,13 @@ func resolveBrokerName(cfg *config.GlobalConfig, settings *config.Settings, vsBr
 func resolveHubEndpointForBroker(cfg *config.GlobalConfig, hubEndpoint string, settings *config.Settings) string {
 	hubEndpointForRH := cfg.RuntimeBroker.HubEndpoint
 	if hubEndpointForRH == "" && enableHub {
-		if hubEndpoint != "" && !isLocalhostURL(hubEndpoint) {
+		if hubEndpoint != "" {
+			// Use the already-resolved hub endpoint directly. It carries
+			// the correct port (e.g. web port 8080 in combo mode) and the
+			// broker is co-located so localhost is reachable.
 			hubEndpointForRH = hubEndpoint
 			if enableDebug {
-				log.Printf("Co-located Hub: using public endpoint %s for broker and agents", hubEndpointForRH)
+				log.Printf("Co-located Hub: using endpoint %s for broker and agents", hubEndpointForRH)
 			}
 		} else {
 			port := cfg.Hub.Port

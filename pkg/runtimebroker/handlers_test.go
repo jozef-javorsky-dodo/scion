@@ -2278,6 +2278,44 @@ func TestStartAgentResolvedEnvHubEndpointWithContainerOverride(t *testing.T) {
 	}
 }
 
+// TestCreateAgentPortPreservedAcrossBridge verifies that when the hub dispatch
+// sends a localhost endpoint on port 8080 but the broker's ContainerHubEndpoint
+// was pre-computed with port 9810, the actual endpoint port (8080) is preserved.
+func TestCreateAgentPortPreservedAcrossBridge(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.BrokerID = "test-broker-id"
+	cfg.BrokerName = "test-host"
+	cfg.Debug = true
+	// Simulate the bug scenario: ContainerHubEndpoint was auto-computed
+	// from a standalone hub port (9810), but the hub actually serves on
+	// the web port (8080) in combo mode.
+	cfg.ContainerHubEndpoint = "http://host.containers.internal:9810"
+
+	mgr := &envCapturingManager{}
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	body := `{
+		"name": "test-agent",
+		"hubEndpoint": "http://localhost:8080"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agents", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+
+	// The bridge host should be applied but the port from the actual
+	// endpoint (8080) must be preserved, not the pre-computed port (9810).
+	if got := mgr.lastEnv["SCION_HUB_ENDPOINT"]; got != "http://host.containers.internal:8080" {
+		t.Errorf("expected SCION_HUB_ENDPOINT='http://host.containers.internal:8080' (port preserved), got %q", got)
+	}
+}
+
 // TestStartAgentBrokerIDEnv verifies that startAgent sets SCION_BROKER_ID from broker config.
 func TestStartAgentBrokerIDEnv(t *testing.T) {
 	srv, mgr := newTestServerWithProvisionCapture()

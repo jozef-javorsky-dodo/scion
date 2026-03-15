@@ -145,6 +145,34 @@ func TestApplyContainerBridgeOverride(t *testing.T) {
 			runtimeName:          "docker",
 			want:                 "https://hub.example.com",
 		},
+		{
+			name:                 "port preserved from endpoint when bridge port differs",
+			endpoint:             "http://localhost:8080",
+			containerHubEndpoint: "http://host.containers.internal:9810",
+			runtimeName:          "podman",
+			want:                 "http://host.containers.internal:8080",
+		},
+		{
+			name:                 "same port preserved correctly",
+			endpoint:             "http://localhost:9810",
+			containerHubEndpoint: "http://host.containers.internal:9810",
+			runtimeName:          "podman",
+			want:                 "http://host.containers.internal:9810",
+		},
+		{
+			name:                 "127.0.0.1 endpoint port preserved",
+			endpoint:             "http://127.0.0.1:3000",
+			containerHubEndpoint: "http://host.docker.internal:9810",
+			runtimeName:          "docker",
+			want:                 "http://host.docker.internal:3000",
+		},
+		{
+			name:                 "no explicit port falls back to pre-computed",
+			endpoint:             "http://localhost",
+			containerHubEndpoint: "http://host.containers.internal:9810",
+			runtimeName:          "podman",
+			want:                 "http://host.containers.internal:9810",
+		},
 	}
 
 	for _, tt := range tests {
