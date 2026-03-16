@@ -23,12 +23,13 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
-import type { PageData, Grove, Template } from '../../shared/types.js';
+import type { PageData, Grove, Template, AdminGroup } from '../../shared/types.js';
 import { can, canAny } from '../../shared/types.js';
 import { apiFetch } from '../../client/api.js';
 import '../shared/env-var-list.js';
 import '../shared/secret-list.js';
 import '../shared/shared-dir-list.js';
+import '../shared/group-member-editor.js';
 
 interface Agent {
   id: string;
@@ -73,6 +74,9 @@ export class ScionPageGroveSettings extends LitElement {
 
   @state()
   private syncSuccess: string | null = null;
+
+  @state()
+  private membersGroup: AdminGroup | null = null;
 
   private syncAgentId: string | null = null;
   private syncPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -360,6 +364,7 @@ export class ScionPageGroveSettings extends LitElement {
     }
     void this.loadGrove();
     void this.loadTemplates();
+    void this.loadMembersGroup();
   }
 
   override disconnectedCallback(): void {
@@ -404,6 +409,22 @@ export class ScionPageGroveSettings extends LitElement {
       console.error('Failed to load templates:', err);
     } finally {
       this.templatesLoading = false;
+    }
+  }
+
+  private async loadMembersGroup(): Promise<void> {
+    try {
+      const response = await apiFetch(
+        `/api/v1/groups?groveId=${encodeURIComponent(this.groveId)}&groupType=explicit&limit=10`
+      );
+      if (response.ok) {
+        const data = (await response.json()) as { groups?: AdminGroup[] } | AdminGroup[];
+        const groups = Array.isArray(data) ? data : data.groups || [];
+        // Find the members group (slug pattern: grove:<slug>:members)
+        this.membersGroup = groups.find((g) => g.slug?.endsWith(':members')) || null;
+      }
+    } catch (err) {
+      console.error('Failed to load grove members group:', err);
     }
   }
 
@@ -543,6 +564,18 @@ export class ScionPageGroveSettings extends LitElement {
       </div>
 
       ${this.renderTemplatesSection()}
+
+      ${this.membersGroup
+        ? html`
+            <scion-group-member-editor
+              groupId=${this.membersGroup.id}
+              ?readOnly=${!canAny(this.grove._capabilities, 'update', 'manage')}
+              compact
+              sectionTitle="Grove Members"
+              sectionDescription="Users and groups who can create and manage agents in this grove."
+            ></scion-group-member-editor>
+          `
+        : ''}
 
       ${canAny(this.grove._capabilities, 'update', 'manage') ? html`
         <scion-env-var-list

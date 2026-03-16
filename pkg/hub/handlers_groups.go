@@ -15,6 +15,7 @@
 package hub
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -56,9 +57,15 @@ type UpdateGroupRequest struct {
 	OwnerID     string            `json:"ownerId,omitempty"`
 }
 
+// GroupMemberInfo is a group member enriched with human-friendly display info.
+type GroupMemberInfo struct {
+	store.GroupMember
+	DisplayName string `json:"displayName,omitempty"`
+}
+
 // ListGroupMembersResponse is the response for listing group members.
 type ListGroupMembersResponse struct {
-	Members []store.GroupMember `json:"members"`
+	Members []GroupMemberInfo `json:"members"`
 }
 
 // AddGroupMemberRequest is the request body for adding a member to a group.
@@ -88,6 +95,7 @@ func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 		OwnerID:   query.Get("ownerId"),
 		ParentID:  query.Get("parentId"),
 		GroupType: query.Get("groupType"),
+		GroveID:   query.Get("groveId"),
 	}
 
 	limit := 50
@@ -384,9 +392,44 @@ func (s *Server) listGroupMembers(w http.ResponseWriter, r *http.Request, groupI
 		return
 	}
 
+	// Enrich members with human-friendly display names
+	enriched := make([]GroupMemberInfo, len(members))
+	for i, m := range members {
+		enriched[i] = GroupMemberInfo{GroupMember: m}
+		enriched[i].DisplayName = s.resolveGroupMemberDisplayName(ctx, m.MemberType, m.MemberID)
+	}
+
 	writeJSON(w, http.StatusOK, ListGroupMembersResponse{
-		Members: members,
+		Members: enriched,
 	})
+}
+
+// resolveGroupMemberDisplayName looks up a human-friendly name for a group member.
+func (s *Server) resolveGroupMemberDisplayName(ctx context.Context, memberType, memberID string) string {
+	switch memberType {
+	case store.GroupMemberTypeUser:
+		user, err := s.store.GetUser(ctx, memberID)
+		if err != nil {
+			return ""
+		}
+		if user.DisplayName != "" {
+			return user.DisplayName
+		}
+		return user.Email
+	case store.GroupMemberTypeGroup:
+		group, err := s.store.GetGroup(ctx, memberID)
+		if err != nil {
+			return ""
+		}
+		return group.Name
+	case store.GroupMemberTypeAgent:
+		agent, err := s.store.GetAgent(ctx, memberID)
+		if err != nil {
+			return ""
+		}
+		return agent.Name
+	}
+	return ""
 }
 
 func (s *Server) addGroupMember(w http.ResponseWriter, r *http.Request, groupID string) {
@@ -418,9 +461,64 @@ func (s *Server) addGroupMember(w http.ResponseWriter, r *http.Request, groupID 
 		return
 	}
 
+	// Resolve the member ID from human-friendly identifiers.
+	// For users: accept email addresses in addition to UUIDs.
+	// For groups: accept slugs in addition to UUIDs.
+	resolvedID := req.MemberID
+	switch req.MemberType {
+	case store.GroupMemberTypeUser:
+		// If it looks like an email address, resolve it
+		if strings.Contains(req.MemberID, "@") {
+			user, err := s.store.GetUserByEmail(ctx, req.MemberID)
+			if err != nil {
+				if err == store.ErrNotFound {
+					ValidationError(w, "user not found with email: "+req.MemberID, nil)
+					return
+				}
+				writeErrorFromErr(w, err, "")
+				return
+			}
+			resolvedID = user.ID
+		} else {
+			// Verify the user ID exists
+			if _, err := s.store.GetUser(ctx, req.MemberID); err != nil {
+				if err == store.ErrNotFound {
+					ValidationError(w, "user not found: "+req.MemberID, nil)
+					return
+				}
+				writeErrorFromErr(w, err, "")
+				return
+			}
+		}
+	case store.GroupMemberTypeGroup:
+		// Try as ID first, then as slug
+		if _, err := s.store.GetGroup(ctx, req.MemberID); err != nil {
+			if err == store.ErrNotFound {
+				group, slugErr := s.store.GetGroupBySlug(ctx, req.MemberID)
+				if slugErr != nil {
+					ValidationError(w, "group not found: "+req.MemberID, nil)
+					return
+				}
+				resolvedID = group.ID
+			} else {
+				writeErrorFromErr(w, err, "")
+				return
+			}
+		}
+	case store.GroupMemberTypeAgent:
+		if _, err := s.store.GetAgent(ctx, req.MemberID); err != nil {
+			if err == store.ErrNotFound {
+				ValidationError(w, "agent not found: "+req.MemberID, nil)
+				return
+			}
+			writeErrorFromErr(w, err, "")
+			return
+		}
+	}
+
 	// Check for cycles when adding a group as a member
 	if req.MemberType == store.GroupMemberTypeGroup {
-		wouldCycle, err := s.store.WouldCreateCycle(ctx, groupID, req.MemberID)
+		wouldCycle, err := s.store.WouldCreateCycle(ctx, groupID, resolvedID)
 		if err != nil {
 			writeErrorFromErr(w, err, "")
 			return
@@ -434,9 +532,13 @@ func (s *Server) addGroupMember(w http.ResponseWriter, r *http.Request, groupID 
 	member := &store.GroupMember{
 		GroupID:    groupID,
 		MemberType: req.MemberType,
-		MemberID:   req.MemberID,
+		MemberID:   resolvedID,
 		Role:       req.Role,
-		// AddedBy: TODO: Get from auth context
+	}
+
+	// Set AddedBy from auth context
+	if identity := GetIdentityFromContext(ctx); identity != nil {
+		member.AddedBy = identity.ID()
 	}
 
 	if err := s.store.AddGroupMember(ctx, member); err != nil {
@@ -448,7 +550,12 @@ func (s *Server) addGroupMember(w http.ResponseWriter, r *http.Request, groupID 
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, member)
+	// Return enriched response with display name
+	resp := GroupMemberInfo{
+		GroupMember: *member,
+		DisplayName: s.resolveGroupMemberDisplayName(ctx, member.MemberType, member.MemberID),
+	}
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 // handleGroupMemberByID handles DELETE on /api/v1/groups/{groupId}/members/{type}/{id}

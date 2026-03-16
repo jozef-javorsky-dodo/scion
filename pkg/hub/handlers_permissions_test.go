@@ -235,6 +235,19 @@ func TestGroupMembersAdd(t *testing.T) {
 		t.Fatalf("failed to create group: %v", err)
 	}
 
+	// Create the user to be added as a member
+	user := &store.User{
+		ID:          "user_abc123",
+		Email:       "user@example.com",
+		DisplayName: "Test User",
+		Role:        "member",
+		Status:      "active",
+		Created:     time.Now(),
+	}
+	if err := s.CreateUser(ctx, user); err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
 	body := AddGroupMemberRequest{
 		MemberType: "user",
 		MemberID:   "user_abc123",
@@ -247,13 +260,151 @@ func TestGroupMembersAdd(t *testing.T) {
 		t.Errorf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var resp store.GroupMember
+	var resp GroupMemberInfo
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
 	if resp.MemberID != "user_abc123" {
 		t.Errorf("expected memberId 'user_abc123', got %q", resp.MemberID)
+	}
+	if resp.DisplayName != "Test User" {
+		t.Errorf("expected displayName 'Test User', got %q", resp.DisplayName)
+	}
+}
+
+func TestGroupMembersAddByEmail(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	group := &store.Group{
+		ID:      "group_email123",
+		Name:    "Test Group Email",
+		Slug:    "test-group-email",
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+	if err := s.CreateGroup(ctx, group); err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+
+	// Create the user
+	user := &store.User{
+		ID:          "user_email_test",
+		Email:       "alice@example.com",
+		DisplayName: "Alice",
+		Role:        "member",
+		Status:      "active",
+		Created:     time.Now(),
+	}
+	if err := s.CreateUser(ctx, user); err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	// Add by email address instead of ID
+	body := AddGroupMemberRequest{
+		MemberType: "user",
+		MemberID:   "alice@example.com",
+		Role:       "member",
+	}
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/groups/"+group.ID+"/members", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp GroupMemberInfo
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Should resolve email to user ID
+	if resp.MemberID != "user_email_test" {
+		t.Errorf("expected memberId 'user_email_test', got %q", resp.MemberID)
+	}
+	if resp.DisplayName != "Alice" {
+		t.Errorf("expected displayName 'Alice', got %q", resp.DisplayName)
+	}
+}
+
+func TestGroupMembersAddByEmail_NotFound(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	group := &store.Group{
+		ID:      "group_email_nf",
+		Name:    "Test Group",
+		Slug:    "test-group-email-nf",
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+	if err := s.CreateGroup(ctx, group); err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+
+	body := AddGroupMemberRequest{
+		MemberType: "user",
+		MemberID:   "nobody@example.com",
+		Role:       "member",
+	}
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/groups/"+group.ID+"/members", body)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGroupMembersAddGroupBySlug(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	parentGroup := &store.Group{
+		ID:      "parent_grp",
+		Name:    "Parent Group",
+		Slug:    "parent-group",
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+	childGroup := &store.Group{
+		ID:      "child_grp",
+		Name:    "Child Group",
+		Slug:    "child-group",
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+	if err := s.CreateGroup(ctx, parentGroup); err != nil {
+		t.Fatalf("failed to create parent group: %v", err)
+	}
+	if err := s.CreateGroup(ctx, childGroup); err != nil {
+		t.Fatalf("failed to create child group: %v", err)
+	}
+
+	// Add child group by slug
+	body := AddGroupMemberRequest{
+		MemberType: "group",
+		MemberID:   "child-group",
+		Role:       "member",
+	}
+
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/groups/"+parentGroup.ID+"/members", body)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp GroupMemberInfo
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Should resolve slug to group ID
+	if resp.MemberID != "child_grp" {
+		t.Errorf("expected memberId 'child_grp', got %q", resp.MemberID)
+	}
+	if resp.DisplayName != "Child Group" {
+		t.Errorf("expected displayName 'Child Group', got %q", resp.DisplayName)
 	}
 }
 
@@ -394,6 +545,26 @@ func TestGroupMembersAddAgent(t *testing.T) {
 	srv, s := testServer(t)
 	ctx := context.Background()
 
+	// Create a grove for the agent
+	grove := &store.Grove{
+		ID:   "grove_agent_test",
+		Name: "Test Grove",
+		Slug: "test-grove-agent",
+	}
+	if err := s.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	// Create the agent
+	agent := &store.Agent{
+		ID:      "agent_abc123",
+		Name:    "Test Agent",
+		GroveID: grove.ID,
+	}
+	if err := s.CreateAgent(ctx, agent); err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+
 	group := &store.Group{
 		ID:      "group_agent123",
 		Name:    "Test Group",
@@ -417,7 +588,7 @@ func TestGroupMembersAddAgent(t *testing.T) {
 		t.Errorf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var resp store.GroupMember
+	var resp GroupMemberInfo
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -427,6 +598,9 @@ func TestGroupMembersAddAgent(t *testing.T) {
 	}
 	if resp.MemberID != "agent_abc123" {
 		t.Errorf("expected memberId 'agent_abc123', got %q", resp.MemberID)
+	}
+	if resp.DisplayName != "Test Agent" {
+		t.Errorf("expected displayName 'Test Agent', got %q", resp.DisplayName)
 	}
 }
 

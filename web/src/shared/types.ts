@@ -82,6 +82,7 @@ export interface GroupMember {
   groupId: string;
   memberType: 'user' | 'group' | 'agent';
   memberId: string;
+  displayName?: string;
   role: 'member' | 'admin' | 'owner';
   addedAt: string;
   addedBy?: string;
