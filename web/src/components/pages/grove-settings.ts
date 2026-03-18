@@ -121,6 +121,9 @@ export class ScionPageGroveSettings extends LitElement {
   private settingsSuccess: string | null = null;
 
   @state()
+  private activeConfigTab = 'general';
+
+  @state()
   private dropdownTemplates: Template[] = [];
 
   @state()
@@ -428,6 +431,18 @@ export class ScionPageGroveSettings extends LitElement {
       border-radius: var(--scion-radius, 0.5rem);
       color: var(--sl-color-danger-700, #b91c1c);
       margin-bottom: 1rem;
+    }
+
+    sl-tab-group {
+      --indicator-color: var(--scion-primary, #3b82f6);
+    }
+
+    sl-tab-group::part(base) {
+      background: transparent;
+    }
+
+    sl-tab-panel::part(base) {
+      padding: 1.5rem 0 0 0;
     }
 
     .config-form {
@@ -941,210 +956,242 @@ export class ScionPageGroveSettings extends LitElement {
         <h2>Configuration</h2>
         <p>Grove-level defaults for agent creation.</p>
 
-        <div class="config-form">
-          <div class="config-field">
-            <label>Default Template</label>
-            <sl-select
-              placeholder="None (use server default)"
-              clearable
-              value=${this.configDefaultTemplate}
-              ?disabled=${!canEdit}
-              @sl-change=${(e: Event) => {
-                this.configDefaultTemplate = (e.target as HTMLSelectElement).value;
-              }}
-            >
-              ${this.dropdownTemplates.map(
-                (t) => html` <sl-option value=${t.name}>${t.displayName || t.name}</sl-option> `
-              )}
-            </sl-select>
-            <span class="field-help"
-              >Template used when creating agents without specifying one.</span
-            >
-          </div>
+        <sl-tab-group
+          @sl-tab-show=${(e: CustomEvent) => {
+            this.activeConfigTab = (e.detail as { name: string }).name;
+          }}
+        >
+          <sl-tab slot="nav" panel="general" ?active=${this.activeConfigTab === 'general'}
+            >General</sl-tab
+          >
+          <sl-tab slot="nav" panel="limits" ?active=${this.activeConfigTab === 'limits'}
+            >Limits</sl-tab
+          >
+          <sl-tab slot="nav" panel="resources" ?active=${this.activeConfigTab === 'resources'}
+            >Resources</sl-tab
+          >
 
-          <div class="config-field">
-            <label>Default Harness Config</label>
-            <sl-select
-              placeholder="None (use server default)"
-              clearable
-              value=${this.configDefaultHarnessConfig}
-              ?disabled=${!canEdit}
-              @sl-change=${(e: Event) => {
-                this.configDefaultHarnessConfig = (e.target as HTMLSelectElement).value;
-              }}
-            >
-              ${this.harnessConfigs.length > 0
-                ? this.harnessConfigs.map(
-                    (hc) => html`
-                      <sl-option value=${hc.name}>
-                        ${hc.displayName || hc.name}
-                        ${hc.harness ? html` <small>(${hc.harness})</small>` : ''}
-                      </sl-option>
-                    `
-                  )
-                : html`
-                    <sl-option value="gemini">Gemini</sl-option>
-                    <sl-option value="claude">Claude</sl-option>
-                    <sl-option value="opencode">OpenCode</sl-option>
-                    <sl-option value="codex">Codex</sl-option>
-                  `}
-            </sl-select>
-            <span class="field-help">Harness configuration used by default for new agents.</span>
-          </div>
+          <sl-tab-panel name="general">
+            <div class="config-form">
+              <div class="config-field">
+                <label>Default Template</label>
+                <sl-select
+                  placeholder="None (use server default)"
+                  clearable
+                  value=${this.configDefaultTemplate}
+                  ?disabled=${!canEdit}
+                  @sl-change=${(e: Event) => {
+                    this.configDefaultTemplate = (e.target as HTMLSelectElement).value;
+                  }}
+                >
+                  ${this.dropdownTemplates.map(
+                    (t) => html` <sl-option value=${t.name}>${t.displayName || t.name}</sl-option> `
+                  )}
+                </sl-select>
+                <span class="field-help"
+                  >Template used when creating agents without specifying one.</span
+                >
+              </div>
 
-          <div class="config-field">
-            <label>Telemetry</label>
-            <sl-switch
-              ?checked=${this.configTelemetryEnabled === true}
-              ?disabled=${!canEdit}
-              @sl-change=${(e: Event) => {
-                this.configTelemetryEnabled = (e.target as HTMLInputElement).checked;
-              }}
-            >
-              ${this.configTelemetryEnabled ? 'Enabled' : 'Disabled'}
-            </sl-switch>
-            <span class="field-help">Enable or disable telemetry for agents in this grove.</span>
-          </div>
+              <div class="config-field">
+                <label>Default Harness Config</label>
+                <sl-select
+                  placeholder="None (use server default)"
+                  clearable
+                  value=${this.configDefaultHarnessConfig}
+                  ?disabled=${!canEdit}
+                  @sl-change=${(e: Event) => {
+                    this.configDefaultHarnessConfig = (e.target as HTMLSelectElement).value;
+                  }}
+                >
+                  ${this.harnessConfigs.length > 0
+                    ? this.harnessConfigs.map(
+                        (hc) => html`
+                          <sl-option value=${hc.name}>
+                            ${hc.displayName || hc.name}
+                            ${hc.harness ? html` <small>(${hc.harness})</small>` : ''}
+                          </sl-option>
+                        `
+                      )
+                    : html`
+                        <sl-option value="gemini">Gemini</sl-option>
+                        <sl-option value="claude">Claude</sl-option>
+                        <sl-option value="opencode">OpenCode</sl-option>
+                        <sl-option value="codex">Codex</sl-option>
+                      `}
+                </sl-select>
+                <span class="field-help"
+                  >Harness configuration used by default for new agents.</span
+                >
+              </div>
 
-          <div style="border-top: 1px solid var(--scion-border, #e2e8f0); padding-top: 1rem; margin-top: 0.5rem;">
-            <label style="font-size: 0.875rem; font-weight: 600; color: var(--scion-text, #1e293b); margin-bottom: 0.5rem; display: block;">Default Agent Limits</label>
-            <span class="field-help" style="display: block; margin-bottom: 0.75rem;">Applied to new agents unless overridden by template or agent config.</span>
-          </div>
+              <div class="config-field">
+                <label>Telemetry</label>
+                <sl-switch
+                  ?checked=${this.configTelemetryEnabled === true}
+                  ?disabled=${!canEdit}
+                  @sl-change=${(e: Event) => {
+                    this.configTelemetryEnabled = (e.target as HTMLInputElement).checked;
+                  }}
+                >
+                  ${this.configTelemetryEnabled ? 'Enabled' : 'Disabled'}
+                </sl-switch>
+                <span class="field-help"
+                  >Enable or disable telemetry for agents in this grove.</span
+                >
+              </div>
+            </div>
+          </sl-tab-panel>
 
-          <div class="config-field">
-            <label>Default Max Turns</label>
-            <sl-input
-              type="number"
-              placeholder="No limit"
-              .value=${this.configDefaultMaxTurns ? String(this.configDefaultMaxTurns) : ''}
-              ?disabled=${!canEdit}
-              @sl-input=${(e: Event) => {
-                this.configDefaultMaxTurns = parseInt((e.target as HTMLInputElement).value) || 0;
-              }}
-            ></sl-input>
-            <span class="field-help">Maximum conversation turns per agent.</span>
-          </div>
+          <sl-tab-panel name="limits">
+            <div class="config-form">
+              <span class="field-help" style="display: block; margin-bottom: 0.25rem;"
+                >Applied to new agents unless overridden by template or agent config.</span
+              >
 
-          <div class="config-field">
-            <label>Default Max Model Calls</label>
-            <sl-input
-              type="number"
-              placeholder="No limit"
-              .value=${this.configDefaultMaxModelCalls ? String(this.configDefaultMaxModelCalls) : ''}
-              ?disabled=${!canEdit}
-              @sl-input=${(e: Event) => {
-                this.configDefaultMaxModelCalls = parseInt((e.target as HTMLInputElement).value) || 0;
-              }}
-            ></sl-input>
-            <span class="field-help">Maximum LLM API calls per agent.</span>
-          </div>
+              <div class="config-field">
+                <label>Default Max Turns</label>
+                <sl-input
+                  type="number"
+                  placeholder="No limit"
+                  .value=${this.configDefaultMaxTurns ? String(this.configDefaultMaxTurns) : ''}
+                  ?disabled=${!canEdit}
+                  @sl-input=${(e: Event) => {
+                    this.configDefaultMaxTurns =
+                      parseInt((e.target as HTMLInputElement).value) || 0;
+                  }}
+                ></sl-input>
+                <span class="field-help">Maximum conversation turns per agent.</span>
+              </div>
 
-          <div class="config-field">
-            <label>Default Max Duration</label>
-            <sl-input
-              type="text"
-              placeholder="e.g. 2h, 30m"
-              .value=${this.configDefaultMaxDuration}
-              ?disabled=${!canEdit}
-              @sl-input=${(e: Event) => {
-                this.configDefaultMaxDuration = (e.target as HTMLInputElement).value;
-              }}
-            ></sl-input>
-            <span class="field-help">Maximum execution time (Go duration format).</span>
-          </div>
-
-          <div style="border-top: 1px solid var(--scion-border, #e2e8f0); padding-top: 1rem; margin-top: 0.5rem;">
-            <label style="font-size: 0.875rem; font-weight: 600; color: var(--scion-text, #1e293b); margin-bottom: 0.5rem; display: block;">Default Resources</label>
-            <span class="field-help" style="display: block; margin-bottom: 0.75rem;">Default resource requests and limits for new agents.</span>
-          </div>
-
-          <div class="config-field">
-            <label>CPU Request</label>
-            <sl-input
-              type="text"
-              placeholder="e.g. 500m, 1"
-              .value=${this.configDefaultResCpuReq}
-              ?disabled=${!canEdit}
-              @sl-input=${(e: Event) => {
-                this.configDefaultResCpuReq = (e.target as HTMLInputElement).value;
-              }}
-            ></sl-input>
-          </div>
-
-          <div class="config-field">
-            <label>Memory Request</label>
-            <sl-input
-              type="text"
-              placeholder="e.g. 512Mi, 1Gi"
-              .value=${this.configDefaultResMemReq}
-              ?disabled=${!canEdit}
-              @sl-input=${(e: Event) => {
-                this.configDefaultResMemReq = (e.target as HTMLInputElement).value;
-              }}
-            ></sl-input>
-          </div>
-
-          <div class="config-field">
-            <label>CPU Limit</label>
-            <sl-input
-              type="text"
-              placeholder="e.g. 1, 2"
-              .value=${this.configDefaultResCpuLim}
-              ?disabled=${!canEdit}
-              @sl-input=${(e: Event) => {
-                this.configDefaultResCpuLim = (e.target as HTMLInputElement).value;
-              }}
-            ></sl-input>
-          </div>
-
-          <div class="config-field">
-            <label>Memory Limit</label>
-            <sl-input
-              type="text"
-              placeholder="e.g. 1Gi, 2Gi"
-              .value=${this.configDefaultResMemLim}
-              ?disabled=${!canEdit}
-              @sl-input=${(e: Event) => {
-                this.configDefaultResMemLim = (e.target as HTMLInputElement).value;
-              }}
-            ></sl-input>
-          </div>
-
-          <div class="config-field">
-            <label>Disk</label>
-            <sl-input
-              type="text"
-              placeholder="e.g. 10Gi"
-              .value=${this.configDefaultResDisk}
-              ?disabled=${!canEdit}
-              @sl-input=${(e: Event) => {
-                this.configDefaultResDisk = (e.target as HTMLInputElement).value;
-              }}
-            ></sl-input>
-          </div>
-
-          ${canEdit
-            ? html`
-                <div class="config-actions">
-                  ${this.settingsError
-                    ? html`<span class="config-status error">${this.settingsError}</span>`
+              <div class="config-field">
+                <label>Default Max Model Calls</label>
+                <sl-input
+                  type="number"
+                  placeholder="No limit"
+                  .value=${this.configDefaultMaxModelCalls
+                    ? String(this.configDefaultMaxModelCalls)
                     : ''}
-                  ${this.settingsSuccess
-                    ? html`<span class="config-status success">${this.settingsSuccess}</span>`
-                    : ''}
-                  <sl-button
-                    variant="primary"
-                    size="small"
-                    ?loading=${this.settingsSaving}
-                    ?disabled=${this.settingsSaving}
-                    @click=${() => this.handleSaveConfig()}
-                  >
-                    Save Configuration
-                  </sl-button>
-                </div>
-              `
-            : ''}
-        </div>
+                  ?disabled=${!canEdit}
+                  @sl-input=${(e: Event) => {
+                    this.configDefaultMaxModelCalls =
+                      parseInt((e.target as HTMLInputElement).value) || 0;
+                  }}
+                ></sl-input>
+                <span class="field-help">Maximum LLM API calls per agent.</span>
+              </div>
+
+              <div class="config-field">
+                <label>Default Max Duration</label>
+                <sl-input
+                  type="text"
+                  placeholder="e.g. 2h, 30m"
+                  .value=${this.configDefaultMaxDuration}
+                  ?disabled=${!canEdit}
+                  @sl-input=${(e: Event) => {
+                    this.configDefaultMaxDuration = (e.target as HTMLInputElement).value;
+                  }}
+                ></sl-input>
+                <span class="field-help">Maximum execution time (Go duration format).</span>
+              </div>
+            </div>
+          </sl-tab-panel>
+
+          <sl-tab-panel name="resources">
+            <div class="config-form">
+              <span class="field-help" style="display: block; margin-bottom: 0.25rem;"
+                >Default resource requests and limits for new agents.</span
+              >
+
+              <div class="config-field">
+                <label>CPU Request</label>
+                <sl-input
+                  type="text"
+                  placeholder="e.g. 500m, 1"
+                  .value=${this.configDefaultResCpuReq}
+                  ?disabled=${!canEdit}
+                  @sl-input=${(e: Event) => {
+                    this.configDefaultResCpuReq = (e.target as HTMLInputElement).value;
+                  }}
+                ></sl-input>
+              </div>
+
+              <div class="config-field">
+                <label>Memory Request</label>
+                <sl-input
+                  type="text"
+                  placeholder="e.g. 512Mi, 1Gi"
+                  .value=${this.configDefaultResMemReq}
+                  ?disabled=${!canEdit}
+                  @sl-input=${(e: Event) => {
+                    this.configDefaultResMemReq = (e.target as HTMLInputElement).value;
+                  }}
+                ></sl-input>
+              </div>
+
+              <div class="config-field">
+                <label>CPU Limit</label>
+                <sl-input
+                  type="text"
+                  placeholder="e.g. 1, 2"
+                  .value=${this.configDefaultResCpuLim}
+                  ?disabled=${!canEdit}
+                  @sl-input=${(e: Event) => {
+                    this.configDefaultResCpuLim = (e.target as HTMLInputElement).value;
+                  }}
+                ></sl-input>
+              </div>
+
+              <div class="config-field">
+                <label>Memory Limit</label>
+                <sl-input
+                  type="text"
+                  placeholder="e.g. 1Gi, 2Gi"
+                  .value=${this.configDefaultResMemLim}
+                  ?disabled=${!canEdit}
+                  @sl-input=${(e: Event) => {
+                    this.configDefaultResMemLim = (e.target as HTMLInputElement).value;
+                  }}
+                ></sl-input>
+              </div>
+
+              <div class="config-field">
+                <label>Disk</label>
+                <sl-input
+                  type="text"
+                  placeholder="e.g. 10Gi"
+                  .value=${this.configDefaultResDisk}
+                  ?disabled=${!canEdit}
+                  @sl-input=${(e: Event) => {
+                    this.configDefaultResDisk = (e.target as HTMLInputElement).value;
+                  }}
+                ></sl-input>
+              </div>
+            </div>
+          </sl-tab-panel>
+        </sl-tab-group>
+
+        ${canEdit
+          ? html`
+              <div class="config-actions">
+                ${this.settingsError
+                  ? html`<span class="config-status error">${this.settingsError}</span>`
+                  : ''}
+                ${this.settingsSuccess
+                  ? html`<span class="config-status success">${this.settingsSuccess}</span>`
+                  : ''}
+                <sl-button
+                  variant="primary"
+                  size="small"
+                  ?loading=${this.settingsSaving}
+                  ?disabled=${this.settingsSaving}
+                  @click=${() => this.handleSaveConfig()}
+                >
+                  Save Configuration
+                </sl-button>
+              </div>
+            `
+          : ''}
       </div>
     `;
   }
