@@ -126,8 +126,13 @@ export class ScionPageAgents extends LitElement {
         color: var(--scion-primary, #3b82f6);
       }
 
+      .agent-meta a {
+        color: inherit;
+        text-decoration: none;
+      }
+
       .agent-meta a:hover {
-        color: var(--scion-primary, #3b82f6);
+        text-decoration: underline;
       }
 
       .agent-task {
@@ -173,6 +178,15 @@ export class ScionPageAgents extends LitElement {
 
       .filter-toggle {
         display: inline-flex;
+      }
+
+      .grove-link {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .grove-link:hover {
+        text-decoration: underline;
       }
 
       .filter-toggle sl-button::part(base) {
@@ -557,7 +571,7 @@ export class ScionPageAgents extends LitElement {
               </a>
             </h3>
             <div class="agent-meta">
-              ${agent.grove ? html`<div><sl-icon name="folder"></sl-icon> <a href="/groves/${agent.groveId}" style="color: inherit; text-decoration: none;" @click=${(e: MouseEvent) => e.stopPropagation()}>${agent.grove}</a></div>` : ''}
+              ${agent.grove ? html`<div><sl-icon name="folder"></sl-icon> <a href="/groves/${agent.groveId}" @click=${(e: MouseEvent) => e.stopPropagation()}>${agent.grove}</a></div>` : ''}
               <div><sl-icon name="code-square"></sl-icon> ${agent.template}</div>
               ${agent.runtimeBrokerId
                 ? html`<div>
@@ -668,7 +682,7 @@ export class ScionPageAgents extends LitElement {
             <a href="/agents/${agent.id}">${agent.name}</a>
           </span>
         </td>
-        <td>${agent.grove ? html`<a href="/groves/${agent.groveId}">${agent.grove}</a>` : '\u2014'}</td>
+        <td>${agent.grove ? html`<a href="/groves/${agent.groveId}" class="grove-link">${agent.grove}</a>` : '\u2014'}</td>
         <td class="hide-mobile">${agent.template}</td>
         <td>
           <scion-status-badge
