@@ -292,6 +292,66 @@ func TestEnsureHubReady_HubContextSkipsSyncAndRegistration(t *testing.T) {
 	}
 }
 
+func TestEnsureHubReady_HubContextGroveIDEnvPriority(t *testing.T) {
+	// When SCION_GROVE_ID env var and settings.grove_id both exist in hub
+	// context, the env var should take priority. This is important for
+	// template-sync agents that clone an external repo whose .scion/settings
+	// contains the source repo's grove_id.
+
+	envGroveID := "env-grove-id-target"
+	settingsGroveID := "settings-grove-id-source"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/healthz":
+			json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	tmpHome := t.TempDir()
+	// Create a project directory with .scion that has a grove_id in settings
+	projectDir := filepath.Join(tmpHome, "project")
+	scionDir := filepath.Join(projectDir, ".scion")
+	if err := os.MkdirAll(scionDir, 0755); err != nil {
+		t.Fatalf("Failed to create scion dir: %v", err)
+	}
+
+	settingsContent := fmt.Sprintf("grove_id: %s\nruntime: docker\n", settingsGroveID)
+	if err := os.WriteFile(filepath.Join(scionDir, "settings.yaml"), []byte(settingsContent), 0644); err != nil {
+		t.Fatalf("Failed to write settings: %v", err)
+	}
+
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("SCION_HUB_ENDPOINT", server.URL)
+	t.Setenv("SCION_HUB_URL", "")
+	t.Setenv("SCION_GROVE_ID", envGroveID)
+	t.Setenv("SCION_AUTH_TOKEN", "test-agent-token")
+	t.Setenv("SCION_DEV_TOKEN", "")
+
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("Failed to chdir: %v", err)
+	}
+	defer os.Chdir(origDir)
+
+	hubCtx, err := EnsureHubReady("", EnsureHubReadyOptions{
+		AutoConfirm: true,
+	})
+	if err != nil {
+		t.Fatalf("EnsureHubReady returned error: %v", err)
+	}
+	if hubCtx == nil {
+		t.Fatal("EnsureHubReady returned nil")
+	}
+	if hubCtx.GroveID != envGroveID {
+		t.Errorf("GroveID = %q, want %q (SCION_GROVE_ID should take priority over settings.grove_id in hub context)", hubCtx.GroveID, envGroveID)
+	}
+}
+
 func TestSyncResult_IsInSync(t *testing.T) {
 	tests := []struct {
 		name     string

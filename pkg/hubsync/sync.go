@@ -241,11 +241,17 @@ func EnsureHubReady(grovePath string, opts EnsureHubReadyOptions) (*HubContext, 
 		return nil, wrapHubError(fmt.Errorf("Hub is enabled but no endpoint configured.\n\nConfigure via: scion config set hub.endpoint <url>"))
 	}
 
-	// Ensure grove_id exists
-	groveID := settings.GroveID
-	// In hub context, also check SCION_GROVE_ID env var directly
-	if groveID == "" && hubContext {
+	// Ensure grove_id exists.
+	// In hub context, SCION_GROVE_ID takes priority over settings.GroveID
+	// because the dispatcher sets it to the authoritative grove for this
+	// agent. The workspace may contain a cloned repo whose .scion/settings
+	// has a different grove_id (e.g. template-sync from an external repo).
+	var groveID string
+	if hubContext {
 		groveID = os.Getenv("SCION_GROVE_ID")
+	}
+	if groveID == "" {
+		groveID = settings.GroveID
 	}
 	if groveID == "" {
 		if hubContext {
