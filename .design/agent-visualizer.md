@@ -1,264 +1,336 @@
 # Agent Visualizer — Design Proposal
 
-**Status:** Draft
+**Status:** Draft (Revised)
 **Location:** `extras/agent-viz/`
 
 ## Overview
 
-A standalone Three.js-based 3D graph visualization tool that renders real-time agent activity within a Scion grove. The visualizer connects to the Hub's existing SSE event stream and REST API to display:
+A standalone 2D graph visualization tool that replays agent activity from Google Cloud Logging exports. A Go binary processes log files and serves a web-based visualizer over WebSocket, enabling playback at variable speeds.
 
-- **Agent lifecycle** — nodes appear/disappear as agents are created and destroyed
-- **Messaging** — animated particles flow between nodes when messages are sent (agent-to-agent, human-to-agent, system-to-agent)
-- **State changes** — node color/shape/glow shifts to reflect agent phase and activity
-- **File activity** — visual indicators when agents create or modify files
+The visualization shows:
 
-## Data Sources
+- **File graph** — force-directed graph of the project's file/directory tree as the central element
+- **Agent ring** — agents distributed radially around the file graph
+- **Messaging** — transient directional pulse lines between agents on the ring, fading after ~0.5s
+- **File edits** — particles traveling from agent to file node; new files materialize from the particle
+- **Agent state** — Bootstrap Icons (matching the web UI status badge) inside each agent circle
 
-The Hub already exposes everything needed — no backend changes required for an MVP.
-
-### SSE Event Stream (`GET /events`)
-
-Subscribe with patterns like `grove.{groveId}.>` to receive:
-
-| Event Subject | Payload | Visualizer Use |
-|---|---|---|
-| `grove.{id}.agent.created` | `AgentCreatedEvent` (name, slug, template, phase) | Add node to graph |
-| `grove.{id}.agent.deleted` | `{agentId, groveId}` | Remove node from graph |
-| `grove.{id}.agent.status` | `AgentStatusEvent` (phase, activity, detail) | Update node appearance |
-| `broker.{id}.connected` | `BrokerGroveEvent` | Show broker connectivity |
-| `notification.>` | Notification payloads | Overlay notification indicators |
-
-### REST API (Initial State + Supplemental)
-
-| Endpoint | Use |
-|---|---|
-| `GET /api/v1/groves/{id}` | Grove metadata for scene title/context |
-| `GET /api/v1/agents?grove_id={id}` | Seed graph with existing agents on load |
-| `GET /api/v1/agents/{id}` | Fetch full agent detail on click |
-
-### Structured Logs (Stretch — Replay Mode)
-
-The `scion-agents` and `scion-messages` log streams (as seen in `.scratch/downloaded-logs-*.json`) contain rich event data with timestamps, trace IDs, and causal chains. A replay mode could ingest exported logs and animate the visualization historically.
-
-Key log event types available:
-
-| Log Event | Fields | Visualizer Use |
-|---|---|---|
-| `agent.session.start` | agent_id, grove_id, harness | Agent becomes active |
-| `agent.session.end` | agent_id | Agent session concludes |
-| `agent.turn.start` / `agent.turn.end` | agent_id, session_id | Thinking/processing cycles |
-| `agent.tool.call` / `agent.tool.result` | agent_id, tool_name | Tool execution (file ops visible here) |
-| `agent.lifecycle.pre_start` / `post_start` / `pre_stop` | agent_id | Lifecycle transitions |
-| `message dispatched` / `message accepted (buffered)` | sender, recipient, msg_type, message_content | Message flow between agents |
-| `notification message dispatched` | sender, recipient, msg_type | State-change notifications |
-
-## Visualization Design
-
-### Node Types
-
-| Entity | Shape | Default Color | Notes |
-|---|---|---|---|
-| Agent | Sphere | Based on template/harness | Primary graph element |
-| Human/User | Icosahedron | White | Represents user interactions |
-| System | Octahedron | Gray | Hub/broker system messages |
-| Grove | Background ring/boundary | Subtle outline | Optional spatial container |
-
-### Agent State → Visual Mapping
-
-#### Phase (lifecycle)
-
-| Phase | Visual |
-|---|---|
-| `created` | Small, translucent sphere, fading in |
-| `provisioning` / `cloning` / `starting` | Pulsing/breathing animation |
-| `running` | Full opacity, steady glow |
-| `stopping` | Fading out animation |
-| `stopped` | Dimmed, small, or removed |
-| `error` | Red, jagged glow / shake animation |
-
-#### Activity (runtime, when phase=running)
-
-| Activity | Visual |
-|---|---|
-| `idle` | Steady, muted glow |
-| `thinking` | Rotating ring / orbit particle |
-| `executing` | Bright pulse, tool name label |
-| `waiting_for_input` | Amber beacon / exclamation indicator |
-| `completed` | Green check overlay, calms down |
-| `blocked` | Red-amber warning pulse |
-| `stalled` / `offline` | Desaturated, static |
-| `limits_exceeded` | Red cap indicator |
-
-### Message Visualization
-
-Messages are the primary dynamic element. Using directional particles along graph edges:
-
-- **Agent → Agent:** Colored particle matching sender, travels along link
-- **Human → Agent:** Distinct particle shape (star/diamond), enters from edge of scene
-- **System → Agent:** Subtle, uniform particles from a central system node
-- **Broadcast:** Particle emits simultaneously to all connected links
-- **Message type differentiation:**
-  - `instruction` — bright, fast particle
-  - `state-change` — slow, pulsing particle
-  - `input-needed` — amber, attention-grabbing
-
-### File Activity Indicators
-
-When `agent.tool.call` events include file-related tools (`write_file`, `edit_file`, `read_file`, `run_shell_command` with file operations), show:
-
-- Small document icons orbiting the agent node
-- Brief text label with filename
-- Color: green for create, blue for modify, gray for read
-
-### Camera and Interaction
-
-- **Auto-orbit** by default with pause on user interaction
-- **Click node** → sidebar/overlay with agent detail (name, state, task summary, recent messages)
-- **Click edge** → show recent messages on that channel
-- **Zoom to fit** when agents are added/removed
-- **Time scrubber** (replay mode) to scan through historical log data
-
-## Technology Approach
-
-### Recommended: `3d-force-graph` (vanilla, not React wrapper)
-
-The scion web frontend uses **Lit** (Web Components), not React. The vanilla `3d-force-graph` library is framework-agnostic and is the best fit.
-
-#### Why 3d-force-graph
-
-| Feature | Benefit |
-|---|---|
-| `emitParticle(link)` | Purpose-built API for one-shot message particle animation |
-| `nodeThreeObject(node)` | Full Three.js `Object3D` per node — custom shapes, colors, animations |
-| `linkDirectionalParticles` | Continuous particle flow for active channels |
-| Dynamic `graphData()` | Read-mutate-write cycle for real-time add/remove |
-| Scene access (`scene()`, `camera()`, `renderer()`) | Inject custom objects, post-processing (bloom), labels |
-| Proven at scale | Comfortable at 100-200 nodes; examples with 4,000+ |
-
-#### Alternatives Considered
-
-| Library | Verdict |
-|---|---|
-| `react-force-graph-3d` | React wrapper — wrong framework for this codebase |
-| `ngraph` | No built-in particle system; much more integration work |
-| Raw Three.js | 10-20x dev effort to replicate what 3d-force-graph provides |
-| 2D alternatives (d3, cytoscape) | Less visual impact; 3D better conveys the "living system" feel |
-
-### Architecture
+## Architecture
 
 ```
 extras/agent-viz/
-├── index.html              # Standalone entry point
-├── package.json            # Vite + three + 3d-force-graph
-├── tsconfig.json
-├── vite.config.ts
-├── src/
-│   ├── main.ts             # Init, connect to hub, bootstrap graph
-│   ├── graph.ts            # 3d-force-graph setup and update logic
-│   ├── nodes.ts            # Node rendering (state → Three.js objects)
-│   ├── messages.ts         # Message particle emission
-│   ├── events.ts           # SSE client, event parsing, dispatch
-│   ├── api.ts              # REST API calls (initial agent list, details)
-│   ├── replay.ts           # Log file replay engine (stretch)
-│   ├── ui.ts               # HUD overlays (agent detail panel, controls)
-│   └── types.ts            # TypeScript interfaces
-├── public/
-│   └── textures/           # Glow sprites, icons
+├── cmd/
+│   └── agent-viz/
+│       └── main.go             # CLI entry point, flag parsing
+├── internal/
+│   ├── logparser/
+│   │   └── parser.go           # GCP log JSON → playback events
+│   ├── playback/
+│   │   └── engine.go           # Timing, speed control, time-range windowing
+│   └── server/
+│       └── server.go           # HTTP static file server + WebSocket handler
+├── web/                        # Frontend (built assets embedded in binary or served from disk)
+│   ├── index.html
+│   ├── package.json            # Vite + force-graph (2D) + d3
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   └── src/
+│       ├── main.ts             # Init, connect WebSocket, bootstrap visualization
+│       ├── graph.ts            # Force-graph setup, file tree layout
+│       ├── agents.ts           # Radial agent ring rendering and state icons
+│       ├── messages.ts         # Transient message pulse lines between agents
+│       ├── files.ts            # File edit particles, new file materialization
+│       ├── playback.ts         # Transport controls, speed, scrubber, filters
+│       ├── ws.ts               # WebSocket client, event dispatch
+│       ├── types.ts            # TypeScript interfaces for playback events
+│       └── icons.ts            # Bootstrap Icon SVG references for agent state
+├── go.mod
+├── go.sum
 └── README.md
 ```
 
-### Standalone vs Embedded
+### Usage
 
-The visualizer should be a **standalone SPA** in `extras/agent-viz/` that:
-
-1. Accepts hub URL and grove ID via URL params or config
-2. Authenticates using the same token/session mechanism as the web frontend
-3. Can optionally be iframe-embedded in the main web UI later
-
-This avoids coupling to the Lit-based web app while keeping integration possible.
-
-### Data Flow
-
-```
-Hub SSE (/events?sub=grove.{id}.>)
-    │
-    ▼
-EventSource client (src/events.ts)
-    │
-    ├─► Agent created  → graph.addNode(agent)
-    ├─► Agent deleted  → graph.removeNode(agentId)
-    ├─► Agent status   → graph.updateNode(agentId, state)
-    ├─► Message event  → graph.emitParticle(senderNode, recipientNode, msgType)
-    └─► Tool call      → graph.showFileIndicator(agentId, toolName, fileName)
-    │
-    ▼
-3d-force-graph instance
-    │
-    ▼
-Three.js WebGL canvas
+```bash
+agent-viz --log-file /path/to/logs.json [--port 8080]
+# Opens browser to http://localhost:8080
 ```
 
-## Open Questions
+## Data Source: GCP Log Exports
 
-### Data & API
+The input is JSON log files exported from Google Cloud Logging (as in `.scratch/downloaded-logs-*.json`). The Go binary parses these and converts them to a normalized playback event stream.
 
-1. **Message events via SSE:** The current SSE event subjects don't include a dedicated message-sent event. Messages are logged to `scion-messages` but not published via the `EventPublisher`. **Should we add a `PublishMessageSent` event to the hub's event system?** Without this, the visualizer can only show messages in replay mode from logs.
+### Log Streams Consumed
 
-2. **File activity events:** Tool calls (file reads/writes) are logged in `scion-agents` but not published via SSE. **Should we add tool-call events to the SSE stream**, or is this too noisy? An alternative is polling the agent's recent log entries.
+| Log Name | Event Types | Visualizer Use |
+|---|---|---|
+| `scion-agents` | `agent.session.start/end`, `agent.turn.start/end`, `agent.tool.call/result`, `agent.lifecycle.*` | Agent state changes, file edit detection |
+| `scion-messages` | `message dispatched`, `message accepted (buffered)`, `notification message dispatched` | Message flow between agents |
+| `scion-server` | Server-side events | Context (grove setup, broker registration) |
 
-3. **Agent-to-agent link discovery:** The graph needs edges between agents that communicate. Should links be:
-   - Created dynamically when a message is first observed between two agents?
-   - Pre-populated from some declared topology (e.g., orchestrator → workers)?
-   - Both (declared links + dynamic discovery)?
+### Key Log Fields
 
-### Visualization
+**Agent events** (from `scion-agents`):
+- `labels.agent_id` — agent UUID
+- `labels.scion.harness` — harness type (gemini, claude)
+- `labels.grove_id` — grove context
+- `jsonPayload.event.name` — event type (session-start, tool-start, agent-end, etc.)
+- `jsonPayload.tool_name` — tool being called (for file edit detection)
+- `timestamp` — event time for playback ordering
 
-4. **Node layout strategy:** Force-directed is the default, but for orchestrator-worker patterns a hierarchical layout may be clearer. Should we support both and let users toggle? Or auto-detect based on messaging patterns?
+**Message events** (from `scion-messages`):
+- `jsonPayload.sender` — e.g., `agent:green-agent`
+- `jsonPayload.recipient` — e.g., `agent:orchestrator`
+- `jsonPayload.msg_type` — `instruction`, `state-change`, `input-needed`
+- `jsonPayload.message_content` — message text
+- `jsonPayload.broadcasted` — whether it was a broadcast
 
-5. **Scale target:** What's the realistic upper bound for agents in a single grove? 5-10 (typical)? 50? 200? This affects whether we need LOD (level-of-detail) optimizations.
+## Playback Event Format
 
-6. **2D fallback:** Should the tool also offer a simpler 2D mode (using `force-graph-2d`) for lower-end devices or accessibility? The library supports this with the same API.
+The Go log processor normalizes GCP log entries into a stream of typed events sent over WebSocket:
 
-### UX & Integration
+```typescript
+// Sent once at connection start
+interface PlaybackManifest {
+  type: "manifest"
+  timeRange: { start: string; end: string }   // ISO 8601
+  agents: AgentInfo[]                           // All agents seen in logs
+  files: FileNode[]                             // File tree (up to depth cutoff)
+  groveId: string
+  groveName: string
+}
 
-7. **Authentication:** The visualizer needs hub access. Should it:
-   - Reuse the web app's session cookie (requires same-origin or CORS)?
-   - Accept a bearer token via URL fragment?
-   - Support an unauthenticated "demo/replay" mode from log files?
+interface AgentInfo {
+  id: string
+  name: string        // slug used as label
+  harness: string     // gemini, claude, generic
+  color: string       // assigned by processor
+}
 
-8. **Embedding:** Should the visualizer be linkable from the grove detail page in the web UI? If so, as an iframe or a web component?
+interface FileNode {
+  id: string          // relative path
+  name: string        // basename
+  parent: string      // parent directory path
+  isDir: boolean
+}
 
-9. **Replay mode priority:** How important is the ability to replay from exported JSON logs (like the `.scratch/downloaded-logs-*.json` files) vs. live-only visualization? Replay would be valuable for demos, debugging, and post-mortems.
+// Streamed during playback
+interface PlaybackEvent {
+  type: "agent_state" | "message" | "file_edit" | "agent_create" | "agent_destroy"
+  timestamp: string   // original log timestamp
+  data: AgentStateEvent | MessageEvent | FileEditEvent | AgentLifecycleEvent
+}
 
-10. **Audio/haptics:** Should message arrivals or state changes produce subtle audio cues? This could enhance the "living system" feel but may be distracting.
+interface AgentStateEvent {
+  agentId: string
+  phase?: string       // created, running, stopped, error
+  activity?: string    // idle, thinking, executing, waiting_for_input, completed, etc.
+  toolName?: string    // when activity=executing
+}
 
-### Deployment
+interface MessageEvent {
+  sender: string       // agent slug or "user:<name>" or "system"
+  recipient: string    // agent slug
+  msgType: string      // instruction, state-change, input-needed
+  content?: string     // message text (for tooltip/detail)
+  broadcasted: boolean
+}
 
-11. **Build and serve:** Should the visualizer be:
-    - A fully static build (deploy to any CDN/file server)?
-    - Served by the hub's web server alongside the main UI?
-    - A dev-only tool run locally with `npm run dev`?
+interface FileEditEvent {
+  agentId: string
+  filePath: string     // relative path to file
+  action: "create" | "edit"
+}
 
-12. **Configuration:** Beyond hub URL and grove ID, what should be configurable? Candidate settings:
-    - Color scheme / theme
-    - Physics parameters (force strength, damping)
-    - Which event types to visualize
-    - Node label content (name vs slug vs template)
+interface AgentLifecycleEvent {
+  agentId: string
+  name: string
+  action: "create" | "destroy"
+}
+```
+
+### WebSocket Control Messages (Browser → Server)
+
+```typescript
+interface PlaybackCommand {
+  type: "play" | "pause" | "seek" | "speed" | "filter"
+  // seek
+  timestamp?: string
+  // speed
+  multiplier?: number          // 1, 2, 5, 10, 20, 50, 100
+  // filter
+  agents?: string[]            // agent IDs to include (empty = all)
+  eventTypes?: string[]        // event types to include (empty = all)
+  timeRange?: { start: string; end: string }
+}
+```
+
+## Visualization Layout
+
+### Spatial Structure
+
+```
+                    ┌─ Agent A (90°)
+                    │
+        ┌───────────┼───────────┐
+        │           │           │
+Agent D ┤     Force-directed    ├ Agent B
+(180°)  │      file/dir graph   │  (0°)
+        │     (center mass)     │
+        └───────────┼───────────┘
+                    │
+                    └─ Agent C (270°)
+```
+
+- **Center:** Force-directed graph of the project file tree (directories and files up to a configurable depth cutoff)
+- **Ring:** Agents fixed on a circle around the file graph, evenly spaced (N agents → 360/N degrees apart)
+- **Messages:** Transient colored line from sender to recipient on the ring, directionally pulsed, fades over ~0.5s
+- **File edits:** Small particle travels from agent on the ring inward to the target file node
+- **File creates:** Particle travels to the position where the new file node will appear, then grows/expands into the file node
+
+### File Graph
+
+- Rendered at startup from the manifest's file tree
+- Force-directed layout using `force-graph` (2D) or `d3-force`
+- Directories shown as larger nodes, files as smaller nodes
+- Connected by parent-child links
+- Depth cutoff configurable (default: 3-4 levels) — files beyond cutoff roll up to their parent directory
+- All files visible from the start; they highlight/glow when touched during playback
+
+### Agent Nodes
+
+- Fixed position on radial ring (not part of force simulation)
+- Circle with agent color fill + label (slug) below
+- **State icon** inside the circle uses Bootstrap Icons matching the web frontend status badge:
+
+| Activity | Icon | Variant Color |
+|---|---|---|
+| `idle` | `circle-fill` | green |
+| `thinking` | `lightning-charge` | blue (pulsing) |
+| `executing` | `gear` | blue (pulsing) |
+| `waiting_for_input` | `chat-dots` | amber |
+| `blocked` | `clock-history` | gray |
+| `completed` | `check-circle` | green |
+| `limits_exceeded` | `exclamation-octagon` | red |
+| `stalled` | `hourglass-bottom` | amber |
+| `offline` | `wifi-off` | gray |
+
+Phase icons (for lifecycle states before running):
+
+| Phase | Icon | Variant Color |
+|---|---|---|
+| `created` | `circle` | gray |
+| `provisioning` / `cloning` / `starting` | `hourglass-split` / `arrow-down-circle` / `arrow-repeat` | amber (pulsing) |
+| `running` | `play-circle` | green |
+| `stopping` | `arrow-repeat` | amber (pulsing) |
+| `stopped` | `stop-circle` | gray |
+| `error` | `exclamation-triangle` | red |
+
+### Message Lines
+
+- Drawn as a straight line between two agent positions on the ring
+- Directional pulse animation (bright dot travels from sender to recipient)
+- Line color matches sender's agent color
+- Entire line fades to transparent over ~0.5s after the pulse completes
+- Message type affects pulse style:
+  - `instruction` — bright, fast
+  - `state-change` — slower, pulsing
+  - `input-needed` — amber, attention-grabbing
+
+## Playback Controls
+
+### Transport Bar (bottom of viewport)
+
+```
+[|◄] [►/❚❚] [►|]   ──●──────────────────  1x [▾]   16:33:06 / 16:37:43
+ rew  play   fwd        time scrubber       speed      current / total
+```
+
+- **Play/Pause** — toggle playback
+- **Speed multiplier** — dropdown: 1x, 2x, 5x, 10x, 20x, 50x, 100x
+- **Time scrubber** — drag to seek to any point in the log timeline
+- **Time range filter** — set start/end bounds (server-side windowing)
+
+### Filter Panel (sidebar or dropdown)
+
+- **Agent filter** — checkboxes to show/hide specific agents
+- **Event type filter** — toggle visibility of: messages, file edits, state changes, lifecycle events
+- Filters sent to Go server so it skips irrelevant events (reduces WebSocket traffic)
+
+## Technology Stack
+
+### Go Backend
+
+| Component | Purpose |
+|---|---|
+| `logparser` | Parse GCP JSON log format, normalize to playback events, build file tree and agent list |
+| `playback` | Maintain sorted event timeline, handle seek/speed/filter commands, emit events at correct pace |
+| `server` | Serve static web assets, upgrade to WebSocket, dispatch playback events |
+
+### Web Frontend
+
+| Library | Purpose |
+|---|---|
+| `force-graph` (vasturiano) | 2D force-directed graph for file tree — Canvas2D based, same API family as 3d-force-graph |
+| `d3-force` | Underlying force simulation (bundled with force-graph) |
+| Canvas2D / SVG overlay | Agent ring, message pulse lines, file edit particles |
+| Bootstrap Icons (SVG) | Agent state icons inside circles |
+| Vite | Build tool |
+| TypeScript | Type safety |
+
+### Why `force-graph` (2D)
+
+- Same author/API as `3d-force-graph` but renders to Canvas2D — simpler, faster, no WebGL required
+- `emitParticle(link)` API available for file edit particles on the file tree links
+- Custom node rendering via `nodeCanvasObject` callback
+- Framework-agnostic (no React/Lit dependency)
+- Handles hundreds of nodes comfortably
+
+## File Edit Detection
+
+File-related tool calls are identified by `tool_name` in `agent.tool.call` log events:
+
+| Tool Name | Action |
+|---|---|
+| `write_file`, `create_file`, `Write` | `create` (if file is new) or `edit` |
+| `edit_file`, `Edit`, `patch_file` | `edit` |
+| `read_file`, `Read` | Ignored (read-only, no visual) |
+| `run_shell_command`, `Bash` | Ignored (can't reliably determine file ops) |
+
+The log processor extracts the file path from the tool call payload when available.
+
+## Decisions Log
+
+Captured from design review:
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Live SSE vs replay? | **Replay from GCP logs** — no live SSE for MVP. Go server can tail logs for future live mode. |
+| 2 | File activity scope? | **File-edit tool calls only** (write_file, edit_file, etc.) — ignore shell commands. |
+| 3 | Link/edge discovery? | **N/A** — agents on radial ring, not in force graph. Message lines are transient, not persistent edges. |
+| 4 | Layout strategy? | **Hybrid** — force-directed file tree in center, agents on fixed radial ring around it. |
+| 5 | Scale target? | **Up to 50 agents, hundreds of files.** Depth cutoff on file tree to manage complexity. |
+| 6 | 2D vs 3D? | **2D.** Simpler, clearer, no camera confusion. |
+| 7 | Authentication? | **None needed** — Go binary reads local log files, serves locally. |
+| 8 | Embedding? | **Standalone binary** in `extras/agent-viz/`. |
+| 9 | Replay priority? | **Primary mode** — replay is the MVP, not a stretch goal. |
+| 10 | Audio? | **Not addressed** — defer. |
+| 11 | Deployment? | **Standalone Go binary** (`agent-viz`) in `extras/agent-viz/`. Not part of scion CLI. |
+| 12 | Configuration? | **Playback controls:** play/pause, speed multiplier, time scrubber, time range, agent filter, event type filter. |
 
 ## MVP Scope
 
-A minimal viable version would include:
+1. Go binary reads GCP log JSON, parses into playback event stream
+2. Serves web visualizer on localhost, streams events over WebSocket
+3. 2D force-directed file graph (center) with configurable depth cutoff
+4. Agents on radial ring with color + label + state icons
+5. Message pulse lines between agents (transient, fading)
+6. File edit particles from agent to file node; new files materialize
+7. Playback controls: play/pause, speed (1x-100x), time scrubber
+8. Agent and event type filters
 
-1. Connect to hub SSE, seed graph from `GET /agents`
-2. Add/remove nodes on agent create/delete events
-3. Color nodes by phase (running=green, error=red, stopped=gray)
-4. Animate activity with simple glow/pulse
-5. Replay mode from exported log JSON files (since message SSE events don't exist yet)
-6. Click-to-inspect agent detail overlay
-
-**Deferred to v2:**
-- Live message particle visualization (requires hub event system changes)
-- File activity indicators
-- Hierarchical layout mode
-- Embedding in main web UI
+**Deferred:**
+- Live mode (tail log stream or connect to hub SSE)
 - Audio cues
+- Embedding in main web UI
+- Click-to-inspect detail overlays
