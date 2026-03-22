@@ -3145,6 +3145,69 @@ func TestHandleAgentMessage_PlainTextBuildsStructuredMessage(t *testing.T) {
 	assert.NotEmpty(t, sm.Timestamp)
 }
 
+// TestHandleAgentMessage_StructuredMessagePopulatesSender verifies that when
+// a structured_message is sent without a sender (e.g. from the web UI), the
+// handler populates the sender from the authenticated user identity.
+func TestHandleAgentMessage_StructuredMessagePopulatesSender(t *testing.T) {
+	srv, s := testServer(t)
+	ctx := context.Background()
+
+	grove := &store.Grove{
+		ID:   "grove-msg-sender",
+		Name: "Msg Sender Grove",
+		Slug: "msg-sender-grove",
+	}
+	require.NoError(t, s.CreateGrove(ctx, grove))
+
+	broker := &store.RuntimeBroker{
+		ID:     "broker-msg-sender",
+		Name:   "Msg Sender Broker",
+		Slug:   "msg-sender-broker",
+		Status: store.BrokerStatusOnline,
+	}
+	require.NoError(t, s.CreateRuntimeBroker(ctx, broker))
+	require.NoError(t, s.AddGroveProvider(ctx, &store.GroveProvider{
+		GroveID:    grove.ID,
+		BrokerID:   broker.ID,
+		BrokerName: broker.Name,
+		Status:     store.BrokerStatusOnline,
+	}))
+
+	agent := &store.Agent{
+		ID:              "agent-msg-sender-1",
+		Slug:            "agent-msg-sender-1",
+		Name:            "Msg Sender Agent",
+		GroveID:         grove.ID,
+		RuntimeBrokerID: broker.ID,
+		Phase:           string(state.PhaseRunning),
+	}
+	require.NoError(t, s.CreateAgent(ctx, agent))
+
+	disp := &recordingDispatcher{}
+	srv.SetDispatcher(disp)
+
+	// Send a structured_message without sender (simulates web UI)
+	rec := doRequest(t, srv, http.MethodPost, "/api/v1/agents/"+agent.ID+"/message", map[string]interface{}{
+		"structured_message": map[string]interface{}{
+			"msg":   "hello from web UI",
+			"plain": true,
+		},
+		"interrupt": false,
+	})
+	require.Equal(t, http.StatusOK, rec.Code, "response body: %s", rec.Body.String())
+
+	calls := disp.getCalls()
+	require.Len(t, calls, 1, "expected exactly one dispatch call")
+
+	sm := calls[0].StructuredMessage
+	require.NotNil(t, sm, "expected a StructuredMessage")
+	assert.Equal(t, "hello from web UI", sm.Msg)
+	assert.Equal(t, "agent:"+agent.Slug, sm.Recipient)
+	// Dev auth sets DisplayName to "Development User"
+	assert.Equal(t, "user:Development User", sm.Sender, "sender should be populated from authenticated user")
+	assert.NotEmpty(t, sm.SenderID, "sender ID should be populated")
+}
+
 // TestHandleAgentMessage_NotifyCreatesSubscription verifies that sending a message
 // with notify=true creates a notification subscription for the sender.
 func TestHandleAgentMessage_NotifyCreatesSubscription(t *testing.T) {

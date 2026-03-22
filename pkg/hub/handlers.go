@@ -1794,6 +1794,22 @@ func (s *Server) handleAgentMessage(w http.ResponseWriter, r *http.Request, id s
 	if req.StructuredMessage != nil {
 		structuredMsg = req.StructuredMessage
 		plainMessage = req.StructuredMessage.Msg
+		// Populate sender from the authenticated identity when the client
+		// didn't provide one (e.g. web UI sends structured_message without sender).
+		if structuredMsg.Sender == "" {
+			structuredMsg.Sender = "user:unknown"
+			if user := GetUserIdentityFromContext(ctx); user != nil {
+				structuredMsg.SenderID = user.ID()
+				if name := user.DisplayName(); name != "" {
+					structuredMsg.Sender = "user:" + name
+				} else if email := user.Email(); email != "" {
+					structuredMsg.Sender = "user:" + email
+				}
+			} else if agentIdent := GetAgentIdentityFromContext(ctx); agentIdent != nil {
+				structuredMsg.SenderID = agentIdent.ID()
+				structuredMsg.Sender = "agent:" + agentIdent.ID()
+			}
+		}
 	} else if req.Message != "" {
 		plainMessage = req.Message
 		// Build a structured message from the plain text so that downstream
@@ -1920,6 +1936,22 @@ func (s *Server) handleGroveBroadcast(w http.ResponseWriter, r *http.Request, gr
 	if req.StructuredMessage == nil {
 		ValidationError(w, "structured_message is required", nil)
 		return
+	}
+
+	// Populate sender from authenticated identity when not provided by the client.
+	if req.StructuredMessage.Sender == "" {
+		req.StructuredMessage.Sender = "user:unknown"
+		if userIdent != nil {
+			req.StructuredMessage.SenderID = userIdent.ID()
+			if name := userIdent.DisplayName(); name != "" {
+				req.StructuredMessage.Sender = "user:" + name
+			} else if email := userIdent.Email(); email != "" {
+				req.StructuredMessage.Sender = "user:" + email
+			}
+		} else if agentIdent != nil {
+			req.StructuredMessage.SenderID = agentIdent.ID()
+			req.StructuredMessage.Sender = "agent:" + agentIdent.ID()
+		}
 	}
 
 	proxy := s.GetMessageBrokerProxy()
