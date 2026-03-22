@@ -16,6 +16,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 
 	"github.com/GoogleCloudPlatform/scion/pkg/store"
 )
@@ -238,8 +239,8 @@ func (a *AuthzService) precomputeForIdentity(ctx context.Context, identity Ident
 	case "user", "dev":
 		principals = append(principals, store.PrincipalRef{Type: "user", ID: identity.ID()})
 		groupIDs, err := a.store.GetEffectiveGroups(ctx, identity.ID())
-		if err != nil {
-			a.logger.Warn("failed to get effective groups for user", "userID", identity.ID(), "error", err)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			a.logger.Warn("failed to get effective groups for user", "userID", identity.ID(), "error", err.Error())
 		}
 		for _, gid := range groupIDs {
 			principals = append(principals, store.PrincipalRef{Type: "group", ID: gid})
@@ -247,8 +248,8 @@ func (a *AuthzService) precomputeForIdentity(ctx context.Context, identity Ident
 	case "agent":
 		principals = append(principals, store.PrincipalRef{Type: "agent", ID: identity.ID()})
 		groupIDs, err := a.store.GetEffectiveGroupsForAgent(ctx, identity.ID())
-		if err != nil {
-			a.logger.Warn("failed to get effective groups for agent", "agent_id", identity.ID(), "error", err)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			a.logger.Warn("failed to get effective groups for agent", "agent_id", identity.ID(), "error", err.Error())
 		}
 		for _, gid := range groupIDs {
 			principals = append(principals, store.PrincipalRef{Type: "group", ID: gid})

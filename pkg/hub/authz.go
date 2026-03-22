@@ -16,6 +16,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -136,8 +137,8 @@ func (a *AuthzService) checkAccessForUser(ctx context.Context, user UserIdentity
 	}
 
 	groupIDs, err := a.store.GetEffectiveGroups(ctx, user.ID())
-	if err != nil {
-		a.logger.Warn("failed to get effective groups for user", "userID", user.ID(), "error", err)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		a.logger.Warn("failed to get effective groups for user", "userID", user.ID(), "error", err.Error())
 	}
 	for _, gid := range groupIDs {
 		principals = append(principals, store.PrincipalRef{Type: "group", ID: gid})
@@ -161,8 +162,8 @@ func (a *AuthzService) checkAccessForAgent(ctx context.Context, agent AgentIdent
 	}
 
 	groupIDs, err := a.store.GetEffectiveGroupsForAgent(ctx, agent.ID())
-	if err != nil {
-		a.logger.Warn("failed to get effective groups for agent", "agent_id", agent.ID(), "error", err)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		a.logger.Warn("failed to get effective groups for agent", "agent_id", agent.ID(), "error", err.Error())
 	}
 	for _, gid := range groupIDs {
 		principals = append(principals, store.PrincipalRef{Type: "group", ID: gid})
