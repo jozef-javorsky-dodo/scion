@@ -51,6 +51,7 @@ func TestNewMessageLogger_WritesSubsystemAttrs(t *testing.T) {
 		AttrSender, "user:alice",
 		AttrRecipient, "agent:backend-dev",
 		AttrMsgType, "instruction",
+		"message_content", "implement auth",
 		"urgent", false,
 		"broadcasted", false,
 		"plain", false,
@@ -63,11 +64,12 @@ func TestNewMessageLogger_WritesSubsystemAttrs(t *testing.T) {
 	}
 
 	expectedFields := map[string]any{
-		"msg":       "message dispatched",
-		"agent_id":  "agent-123",
-		"sender":    "user:alice",
-		"recipient": "agent:backend-dev",
-		"msg_type":  "instruction",
+		"msg":             "message dispatched",
+		"agent_id":        "agent-123",
+		"sender":          "user:alice",
+		"recipient":       "agent:backend-dev",
+		"msg_type":        "instruction",
+		"message_content": "implement auth",
 	}
 
 	for key, want := range expectedFields {

@@ -121,6 +121,7 @@ func (m *StructuredMessage) LogAttrs() []any {
 		"sender", m.Sender,
 		"recipient", m.Recipient,
 		"msg_type", m.Type,
+		"message_content", m.Msg,
 		"urgent", m.Urgent,
 		"broadcasted", m.Broadcasted,
 		"plain", m.Plain,

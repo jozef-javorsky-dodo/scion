@@ -378,9 +378,8 @@ export class ScionAgentMessageViewer extends LitElement {
     // Extract message body from the payload.
     // payload['message'] and entry.message are the Cloud Logging message
     // (e.g. "message dispatched"), NOT the scion message content.
-    // The actual message body is in payload['body'] or payload['content'].
-    const body = (payload['body'] as string)
-      || (payload['content'] as string)
+    // The actual message body is in payload['message_content'].
+    const body = (payload['message_content'] as string)
       || '';
 
     return {

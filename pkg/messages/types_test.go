@@ -187,19 +187,20 @@ func TestLogAttrs(t *testing.T) {
 
 	attrs := m.LogAttrs()
 
-	// Should contain 6 key-value pairs (12 elements)
-	if len(attrs) != 12 {
-		t.Fatalf("LogAttrs() returned %d elements, want 12", len(attrs))
+	// Should contain 7 key-value pairs (14 elements)
+	if len(attrs) != 14 {
+		t.Fatalf("LogAttrs() returned %d elements, want 14", len(attrs))
 	}
 
 	// Verify key-value pairs
 	expected := map[string]any{
-		"sender":      "user:alice",
-		"recipient":   "agent:dev",
-		"msg_type":    TypeInstruction,
-		"urgent":      true,
-		"broadcasted": false,
-		"plain":       true,
+		"sender":          "user:alice",
+		"recipient":       "agent:dev",
+		"msg_type":        TypeInstruction,
+		"message_content": "hello",
+		"urgent":          true,
+		"broadcasted":     false,
+		"plain":           true,
 	}
 	for i := 0; i < len(attrs); i += 2 {
 		key, ok := attrs[i].(string)
