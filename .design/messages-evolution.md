@@ -1,7 +1,7 @@
 # Messages Evolution: Built-In Inbox and Bidirectional Human-Agent Messaging
 
 ## Status
-**Design** | March 2026
+**In Progress** | March 2026 — Phase 1 complete
 
 ## Problem
 
@@ -256,21 +256,11 @@ Outbound messages from agents to humans are routed through the existing infrastr
 2. **ChannelRegistry**: The existing `dispatchToChannels` logic (Slack, webhook, email) is reused. The `ChannelRegistry.Dispatch()` method already accepts `StructuredMessage` — it just needs to be called for outbound agent messages, not only notifications.
 3. **SSE**: The `ChannelEventPublisher` publishes a new event type `user.message` that the SSE endpoint can deliver to connected browser clients.
 
-#### `sciontool` Integration: Sending Messages from Inside the Container
+#### Agent Messaging via `scion message`
 
-Agents inside containers use `sciontool` to communicate with the Hub. A new `sciontool message` subcommand enables outbound messaging:
+For explicit outbound messaging from inside a container, agents use the primary `scion message` CLI — not `sciontool`. Agents are already instructed to use `scion message` for any deliberate communication with humans or other agents. `sciontool` is reserved for hooks and implicit state changes (e.g., `ask_user` is a special case because it combines state mutation with messaging).
 
-```bash
-# Send a message to the user who launched this agent
-sciontool message user "I need clarification on the auth module scope."
-
-# Send an urgent message
-sciontool message user --urgent "Build is failing, need credentials rotated."
-```
-
-This calls the Hub API endpoint `POST /api/v1/agents/{id}/outbound-message` using the agent's token.
-
-The `sciontool message` command is distinct from `scion message` (the outer CLI). `sciontool` runs inside the container; `scion` runs on the host.
+The `POST /api/v1/agents/{id}/outbound-message` endpoint is therefore called by the `scion message` command (running inside the container via the existing harness toolchain), not by a new sciontool subcommand.
 
 ### 4. `ask_user` Dual Behavior
 
@@ -464,38 +454,52 @@ The notification system is not modified. When `ask_user` fires:
 
 These are independent records. Acknowledging a notification does not mark the message as read, and vice versa.
 
-### 8. Web Frontend Considerations
+### 8. Web Frontend: Inbox Tray
 
-The existing `agent-message-viewer` component reads from Cloud Logging. With the new message store:
+A new **inbox tray** component will be added to the web UI, positioned adjacent to the existing notification tray in the top navigation bar. It uses an envelope icon (`envelope` from Bootstrap Icons) to distinguish it visually from the bell icon used for notifications.
 
-- A new or updated component can read from `GET /api/v1/agents/{id}/messages` instead of (or in addition to) the Cloud Logging proxy
-- The `notification-tray` can be augmented with an unread message count badge
-- Message compose box can remain as-is (it already sends via the Hub API)
+#### Inbox Tray Behavior
 
-Detailed web frontend changes are out of scope for this design and will be addressed separately.
+- Displays a badge with the count of unread messages (fetched from `GET /api/v1/messages?unread=true`)
+- Clicking the icon opens a tray panel listing recent messages, similar in layout and interaction to the notification tray
+- Each message entry shows: sender agent name, message type, truncated message text, and relative timestamp
+- Clicking a message marks it as read (`POST /api/v1/messages/{id}/read`) and optionally expands the full text
+- A "Mark all read" action calls `POST /api/v1/messages/read-all`
+- Real-time updates: subscribes to the `user.message` SSE event to update the badge count and prepend new messages without a page reload
+
+#### Shared UI Componentry
+
+The notification tray and inbox tray share structural patterns (panel open/close, badge overlay, item list, timestamp formatting, read/unread state). The implementation should extract reusable pieces:
+
+- **`<TrayPanel>`** — generic slide-out panel shell (trigger icon + badge + panel body)
+- **`<TrayItem>`** — generic list item with read/unread state, timestamp, and expandable body
+- The notification tray is refactored to use these shared components before or alongside building the inbox tray
+
+#### `agent-message-viewer` Migration
+
+The existing `agent-message-viewer` reads from Cloud Logging. With the new message store available, it can be updated to read from `GET /api/v1/agents/{id}/messages` as the primary source, falling back to the Cloud Logging proxy for historical records predating the migration. This is a lower priority than the inbox tray.
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Message Store and Persistence
+### Phase 1: Message Store and Persistence ✅ COMPLETE
 
-1. Add `Message` model to `pkg/store/models.go`
-2. Add `MessageStore` interface to `pkg/store/store.go`
-3. Add `messages` table to `pkg/store/sqlite/sqlite.go` (schema migration)
-4. Implement `MessageStore` in `pkg/store/sqlite/messages.go`
-5. Wire `MessageStore` into the composite `Store` interface
-6. Add message persistence to `handleAgentMessage` (write-through)
-7. Add message persistence to broadcast handlers
+1. ~~Add `Message` model to `pkg/store/models.go`~~
+2. ~~Add `MessageStore` interface to `pkg/store/store.go`~~
+3. ~~Add `messages` table to `pkg/store/sqlite/sqlite.go` (schema migration V37)~~
+4. ~~Implement `MessageStore` in `pkg/store/sqlite/messages.go`~~
+5. ~~Wire `MessageStore` into the composite `Store` interface~~
+6. ~~Add message persistence to `handleAgentMessage` (write-through)~~
+7. ~~Add message persistence to broadcast handlers~~
 
 ### Phase 2: Agent Outbound and `ask_user`
 
 1. Add `POST /api/v1/agents/{id}/outbound-message` Hub handler
 2. Add `SendOutboundMessage` to `sciontool/hub` client
-3. Add `sciontool message` subcommand (inside-container CLI)
-4. Update `sciontool status ask_user` to dual-send (state + message)
-5. Add recipient resolution logic (implicit → agent creator / subscribers)
-6. Integrate outbound messages with `ChannelRegistry` (Slack, webhook, email)
+3. Update `sciontool status ask_user` to dual-send (state + message)
+4. Add recipient resolution logic (implicit → agent creator / subscribers)
+5. Integrate outbound messages with `ChannelRegistry` (Slack, webhook, email)
 
 ### Phase 3: Human Inbox CLI and API
 
@@ -510,6 +514,16 @@ Detailed web frontend changes are out of scope for this design and will be addre
 2. Subscribe on behalf of SSE-connected users
 3. Publish `user.message` events for real-time delivery
 4. Add message persistence in `MessageBrokerProxy.deliverToAgent` (for broker-routed messages)
+
+### Phase 5: Web Frontend Inbox Tray
+
+1. Extract `<TrayPanel>` and `<TrayItem>` shared components from the existing notification tray
+2. Refactor `notification-tray` to use the shared components
+3. Build `inbox-tray` component using the shared components; wire to `GET /api/v1/messages`
+4. Add envelope icon to the icon registry (`web/scripts/copy-shoelace-icons.mjs`)
+5. Subscribe to `user.message` SSE events for real-time badge updates
+6. Implement mark-read and mark-all-read actions
+7. Update `agent-message-viewer` to read from `GET /api/v1/agents/{id}/messages` as primary source
 
 ---
 
