@@ -1463,11 +1463,7 @@ func (s *Server) performAgentDelete(w http.ResponseWriter, r *http.Request, agen
 
 	// Enforce policy-based authorization: only the agent's creator (owner) or admins can delete
 	if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil {
-		decision := s.authzService.CheckAccess(ctx, userIdent, Resource{
-			Type:    "agent",
-			ID:      agent.ID,
-			OwnerID: agent.OwnerID,
-		}, ActionDelete)
+		decision := s.authzService.CheckAccess(ctx, userIdent, agentResource(agent), ActionDelete)
 		if !decision.Allowed {
 			writeError(w, http.StatusForbidden, ErrCodeForbidden,
 				"Only the agent's creator can delete it", nil)
@@ -1586,11 +1582,7 @@ func (s *Server) handleAgentAction(w http.ResponseWriter, r *http.Request, id, a
 				writeErrorFromErr(w, err, "")
 				return
 			}
-			decision := s.authzService.CheckAccess(r.Context(), userIdent, Resource{
-				Type:    "agent",
-				ID:      targetAgent.ID,
-				OwnerID: targetAgent.OwnerID,
-			}, ActionAttach)
+			decision := s.authzService.CheckAccess(r.Context(), userIdent, agentResource(targetAgent), ActionAttach)
 			if !decision.Allowed {
 				writeError(w, http.StatusForbidden, ErrCodeForbidden,
 					"Only the agent's creator can interact with it", nil)
@@ -3874,11 +3866,7 @@ func (s *Server) handleGroveAgentAction(w http.ResponseWriter, r *http.Request, 
 	switch action {
 	case "start", "stop", "restart", "message":
 		if userIdent := GetUserIdentityFromContext(ctx); userIdent != nil {
-			decision := s.authzService.CheckAccess(ctx, userIdent, Resource{
-				Type:    "agent",
-				ID:      agent.ID,
-				OwnerID: agent.OwnerID,
-			}, ActionAttach)
+			decision := s.authzService.CheckAccess(ctx, userIdent, agentResource(agent), ActionAttach)
 			if !decision.Allowed {
 				writeError(w, http.StatusForbidden, ErrCodeForbidden,
 					"Only the agent's creator can interact with it", nil)

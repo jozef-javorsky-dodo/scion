@@ -91,11 +91,7 @@ func (s *Server) handleAgentPTY(w http.ResponseWriter, r *http.Request) {
 
 	// Enforce policy-based authorization: only the agent's creator (owner) or admins can access PTY
 	if user := GetUserIdentityFromContext(ctx); user != nil {
-		decision := s.authzService.CheckAccess(ctx, user, Resource{
-			Type:    "agent",
-			ID:      agent.ID,
-			OwnerID: agent.OwnerID,
-		}, ActionAttach)
+		decision := s.authzService.CheckAccess(ctx, user, agentResource(agent), ActionAttach)
 		if !decision.Allowed {
 			slog.Warn("PTY access denied: policy check failed",
 				"agent_id", agentID,
