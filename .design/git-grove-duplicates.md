@@ -376,18 +376,18 @@ If this change needs to be reverted, groves that were created as duplicates (sha
 
 ## 8. Implementation Phases
 
-### Phase 1: Schema and Store Layer
+### Phase 1: Schema and Store Layer ✅ COMPLETED
 
 **Goal:** Remove the 1:1 constraint, add slug uniqueness enforcement, and migrate store interface.
 
-1. **Database migration:** Drop UNIQUE constraint on `git_remote`, add UNIQUE constraint on `slug`.
-2. **New store method:** `GetGrovesByGitRemote()` returning `[]*Grove`.
-3. **New store method:** `GetInstallationForRepository()` for direct GitHub installation lookup by repository name.
-4. **Remove `GetGroveByGitRemote()`:** Delete from interface and implementation. Migrate all callers (see Q1).
-5. **Update Ent schema:** Remove `Unique()` from `git_remote` field.
-6. **Slug validation helper:** `NextAvailableSlug(ctx, baseSlug) string` that queries existing slugs and returns the next serial-numbered variant.
-7. **Name generation:** Default display name uses parenthesized qualifier (e.g., `acme-widgets (2)`) when serial suffix is applied.
-8. **Tests:** Store-level tests for multi-grove-per-remote scenarios, slug uniqueness enforcement, serial numbering, and installation-by-repo lookup.
+1. ✅ **Database migration:** Drop UNIQUE constraint on `git_remote`, add UNIQUE constraint on `slug` (migration V40).
+2. ✅ **New store method:** `GetGrovesByGitRemote()` returning `[]*Grove`.
+3. ✅ **New store method:** `GetInstallationForRepository()` for direct GitHub installation lookup by repository name.
+4. ✅ **Remove `GetGroveByGitRemote()`:** Deleted from interface and implementation. All callers migrated (see Q1).
+5. ✅ **Update Ent schema:** Removed `Unique()` from `git_remote` field.
+6. ✅ **Slug validation helper:** `NextAvailableSlug(ctx, baseSlug) string` that queries existing slugs and returns the next serial-numbered variant.
+7. ✅ **Name generation:** `DisplayNameWithSerial()` helper uses parenthesized qualifier (e.g., `acme-widgets (2)`) when serial suffix is applied.
+8. ✅ **Tests:** Store-level tests for multi-grove-per-remote scenarios, slug uniqueness enforcement, serial numbering, and installation-by-repo lookup.
 
 ### Phase 2: Grove ID Generation
 
