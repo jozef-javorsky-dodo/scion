@@ -700,6 +700,7 @@ func (m *AgentManager) Start(ctx context.Context, opts api.StartOptions) (*api.A
 		Debug:                util.DebugEnabled(),
 		Resume:               opts.Resume,
 		MetadataInterception: hasMetadataInterception(agentEnv),
+		ExtraHosts:           runtime.BridgeExtraHosts(m.Runtime.Name(), agentEnv),
 		Labels: func() map[string]string {
 			l := map[string]string{
 				"scion.agent":          "true",

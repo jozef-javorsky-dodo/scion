@@ -904,3 +904,89 @@ func TestResolveContainerWorkspace(t *testing.T) {
 		})
 	}
 }
+
+func TestBridgeExtraHosts(t *testing.T) {
+	tests := []struct {
+		name        string
+		runtimeName string
+		env         []string
+		want        []string
+	}{
+		{
+			name:        "docker with host.docker.internal in env",
+			runtimeName: "docker",
+			env:         []string{"SCION_HUB_ENDPOINT=http://host.docker.internal:8080"},
+			want:        []string{"host.docker.internal:host-gateway"},
+		},
+		{
+			name:        "docker without bridge hostname",
+			runtimeName: "docker",
+			env:         []string{"SCION_HUB_ENDPOINT=http://example.com:8080"},
+			want:        nil,
+		},
+		{
+			name:        "docker with empty env",
+			runtimeName: "docker",
+			env:         nil,
+			want:        nil,
+		},
+		{
+			name:        "podman with host.containers.internal",
+			runtimeName: "podman",
+			env:         []string{"SCION_HUB_ENDPOINT=http://host.containers.internal:8080"},
+			want:        nil,
+		},
+		{
+			name:        "kubernetes runtime",
+			runtimeName: "kubernetes",
+			env:         []string{"SCION_HUB_ENDPOINT=http://host.docker.internal:8080"},
+			want:        nil,
+		},
+		{
+			name:        "docker with bridge hostname in SCION_HUB_URL",
+			runtimeName: "docker",
+			env:         []string{"FOO=bar", "SCION_HUB_URL=http://host.docker.internal:9090"},
+			want:        []string{"host.docker.internal:host-gateway"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BridgeExtraHosts(tt.runtimeName, tt.env)
+			if len(got) != len(tt.want) {
+				t.Fatalf("BridgeExtraHosts(%q, %v) = %v, want %v", tt.runtimeName, tt.env, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("BridgeExtraHosts(%q, %v)[%d] = %q, want %q", tt.runtimeName, tt.env, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestBuildCommonRunArgs_ExtraHosts(t *testing.T) {
+	config := RunConfig{
+		Harness:      &harness.GeminiCLI{},
+		Name:         "test-agent",
+		UnixUsername: "scion",
+		Image:        "scion-agent:latest",
+		ExtraHosts:   []string{"host.docker.internal:host-gateway"},
+	}
+
+	args, err := buildCommonRunArgs(config)
+	if err != nil {
+		t.Fatalf("buildCommonRunArgs failed: %v", err)
+	}
+
+	found := false
+	for i, arg := range args {
+		if arg == "--add-host" && i+1 < len(args) && args[i+1] == "host.docker.internal:host-gateway" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected --add-host host.docker.internal:host-gateway in args, got: %v", args)
+	}
+}

@@ -315,6 +315,11 @@ func buildCommonRunArgs(config RunConfig) ([]string, error) {
 		addArg("--cap-add", "NET_ADMIN")
 	}
 
+	// Add extra /etc/hosts entries (e.g. for host.docker.internal on Linux)
+	for _, h := range config.ExtraHosts {
+		addArg("--add-host", h)
+	}
+
 	if len(fuseMounts) > 0 {
 		addArg("--cap-add", "SYS_ADMIN")
 		addArg("--device", "/dev/fuse")
@@ -466,6 +471,25 @@ func expandTildeTarget(target, containerHome string) string {
 		return filepath.Join(containerHome, target[2:])
 	}
 	return target
+}
+
+// BridgeExtraHosts returns the --add-host entries needed for the given runtime
+// when a bridge hostname (e.g. host.docker.internal) is used in environment
+// variables. On Linux, Docker does not automatically resolve
+// host.docker.internal; the "host-gateway" special address must be mapped
+// explicitly. Podman resolves host.containers.internal natively, so no extra
+// hosts are needed.
+func BridgeExtraHosts(runtimeName string, env []string) []string {
+	if runtimeName != "docker" {
+		return nil
+	}
+	// Check if any env value references host.docker.internal
+	for _, e := range env {
+		if strings.Contains(e, "host.docker.internal") {
+			return []string{"host.docker.internal:host-gateway"}
+		}
+	}
+	return nil
 }
 
 // applyResolvedAuth injects ResolvedAuth env vars and files into the container
