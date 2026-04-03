@@ -588,3 +588,74 @@ func TestBuildStartContext_GCPMetadataExplicitBlock(t *testing.T) {
 		t.Errorf("expected GCE_METADATA_ROOT='localhost:18380', got %q", sc.Opts.Env["GCE_METADATA_ROOT"])
 	}
 }
+
+// TestBuildStartContext_GCPMetadataFromResolvedEnv verifies that the start
+// path (no Config.GCPIdentity) picks up GCP identity from resolvedEnv
+// injected by the hub.  This is the code path hit by "Create & Edit" where
+// the agent is provisioned first and then started with updated config.
+func TestBuildStartContext_GCPMetadataFromResolvedEnv(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.StateDir = t.TempDir()
+	mgr := &envCapturingManager{}
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	r := httptest.NewRequest("POST", "/api/v1/agents", nil)
+
+	// Simulate hub injecting GCP identity via resolvedEnv (start path)
+	sc, err := srv.buildStartContext(context.Background(), startContextInputs{
+		Name: "agent-resolved-assign",
+		ResolvedEnv: map[string]string{
+			"SCION_METADATA_MODE":       "assign",
+			"SCION_METADATA_SA_EMAIL":   "sa@proj.iam.gserviceaccount.com",
+			"SCION_METADATA_PROJECT_ID": "my-project",
+		},
+		HTTPRequest: r,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if sc.Opts.Env["SCION_METADATA_MODE"] != "assign" {
+		t.Errorf("expected SCION_METADATA_MODE='assign', got %q", sc.Opts.Env["SCION_METADATA_MODE"])
+	}
+	if sc.Opts.Env["SCION_METADATA_SA_EMAIL"] != "sa@proj.iam.gserviceaccount.com" {
+		t.Errorf("expected SA email from resolvedEnv, got %q", sc.Opts.Env["SCION_METADATA_SA_EMAIL"])
+	}
+	if sc.Opts.Env["SCION_METADATA_PROJECT_ID"] != "my-project" {
+		t.Errorf("expected project ID from resolvedEnv, got %q", sc.Opts.Env["SCION_METADATA_PROJECT_ID"])
+	}
+	if sc.Opts.Env["GCE_METADATA_HOST"] != "localhost:18380" {
+		t.Errorf("expected GCE_METADATA_HOST='localhost:18380', got %q", sc.Opts.Env["GCE_METADATA_HOST"])
+	}
+}
+
+func TestBuildStartContext_GCPMetadataPassthroughFromResolvedEnv(t *testing.T) {
+	cfg := DefaultServerConfig()
+	cfg.StateDir = t.TempDir()
+	mgr := &envCapturingManager{}
+	rt := &runtime.MockRuntime{}
+	srv := New(cfg, mgr, rt)
+
+	r := httptest.NewRequest("POST", "/api/v1/agents", nil)
+
+	// Simulate hub injecting passthrough mode via resolvedEnv
+	sc, err := srv.buildStartContext(context.Background(), startContextInputs{
+		Name: "agent-resolved-passthrough",
+		ResolvedEnv: map[string]string{
+			"SCION_METADATA_MODE": "passthrough",
+		},
+		HTTPRequest: r,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Passthrough should NOT set metadata server env vars
+	if sc.Opts.Env["SCION_METADATA_PORT"] != "" {
+		t.Errorf("expected no SCION_METADATA_PORT for passthrough, got %q", sc.Opts.Env["SCION_METADATA_PORT"])
+	}
+	if sc.Opts.Env["GCE_METADATA_HOST"] != "" {
+		t.Errorf("expected no GCE_METADATA_HOST for passthrough, got %q", sc.Opts.Env["GCE_METADATA_HOST"])
+	}
+}

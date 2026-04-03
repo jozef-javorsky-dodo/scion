@@ -279,9 +279,16 @@ func (s *Server) buildStartContext(ctx context.Context, in startContextInputs) (
 	// Default to "block" when no GCP identity config is provided, so agents
 	// cannot access the underlying compute identity via the GCE metadata
 	// server unless the hub explicitly sets "passthrough" or "assign".
+	//
+	// Priority: explicit Config.GCPIdentity (create path) > resolvedEnv
+	// values injected by the hub (start path) > secure "block" default.
 	gcpMetadataMode := "block" // secure default
 	if in.Config != nil && in.Config.GCPIdentity != nil {
 		gcpMetadataMode = in.Config.GCPIdentity.MetadataMode
+	} else if mode := env["SCION_METADATA_MODE"]; mode != "" {
+		// The hub injects SCION_METADATA_MODE (and SA details) via
+		// resolvedEnv when dispatching a start for a provisioned agent.
+		gcpMetadataMode = mode
 	}
 	if gcpMetadataMode == "assign" || gcpMetadataMode == "block" {
 		env["SCION_METADATA_MODE"] = gcpMetadataMode

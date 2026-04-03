@@ -932,6 +932,21 @@ func (d *HTTPAgentDispatcher) DispatchAgentStart(ctx context.Context, agent *sto
 		resolvedEnv["SCION_HUB_ENDPOINT"] = d.hubEndpoint
 	}
 
+	// Inject GCP identity env vars so the broker can configure the
+	// metadata-server sidecar correctly on (re-)start.  During the
+	// createAgent path this information travels inside CreateAgentConfig,
+	// but the startAgent path doesn't carry that struct, so we surface
+	// the values through resolvedEnv instead.
+	if agent.AppliedConfig != nil {
+		if gcpID := agent.AppliedConfig.GCPIdentity; gcpID != nil {
+			resolvedEnv["SCION_METADATA_MODE"] = gcpID.MetadataMode
+			if gcpID.MetadataMode == store.GCPMetadataModeAssign {
+				resolvedEnv["SCION_METADATA_SA_EMAIL"] = gcpID.ServiceAccountEmail
+				resolvedEnv["SCION_METADATA_PROJECT_ID"] = gcpID.ProjectID
+			}
+		}
+	}
+
 	// Generate a fresh agent token for Hub authentication
 	if d.tokenGenerator != nil {
 		var additionalScopes []AgentTokenScope

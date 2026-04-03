@@ -2877,3 +2877,149 @@ func TestHTTPAgentDispatcher_DispatchAgentCreate_PropagatesSharedWorkspace(t *te
 		t.Error("expected GitClone to be nil for shared-workspace grove")
 	}
 }
+
+// TestHTTPAgentDispatcher_DispatchAgentStart_InjectsGCPIdentityEnv verifies
+// that DispatchAgentStart injects GCP identity env vars from the agent's
+// AppliedConfig into resolvedEnv so the broker can configure the metadata
+// server sidecar on the start path (used by "Create & Edit" flow).
+func TestHTTPAgentDispatcher_DispatchAgentStart_InjectsGCPIdentityEnv(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	grove := &store.Grove{
+		ID:        "grove-gcp",
+		Name:      "gcp-grove",
+		Slug:      "gcp-grove",
+		GitRemote: "https://github.com/example/repo.git",
+	}
+	if err := memStore.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	broker := &store.RuntimeBroker{
+		ID:       "broker-gcp",
+		Name:     "test-broker",
+		Slug:     "test-broker",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	provider := &store.GroveProvider{
+		GroveID:    "grove-gcp",
+		BrokerID:   "broker-gcp",
+		BrokerName: "test-broker",
+		LocalPath:  "/home/user/projects/myproject/.scion",
+		Status:     store.BrokerStatusOnline,
+	}
+	if err := memStore.AddGroveProvider(ctx, provider); err != nil {
+		t.Fatalf("failed to add grove provider: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false, slog.Default())
+
+	agent := &store.Agent{
+		ID:              "agent-gcp-1",
+		Name:            "gcp-agent",
+		Slug:            "gcp-agent",
+		GroveID:         "grove-gcp",
+		RuntimeBrokerID: "broker-gcp",
+		AppliedConfig: &store.AgentAppliedConfig{
+			GCPIdentity: &store.GCPIdentityConfig{
+				MetadataMode:        store.GCPMetadataModeAssign,
+				ServiceAccountID:    "sa-123",
+				ServiceAccountEmail: "sa@proj.iam.gserviceaccount.com",
+				ProjectID:           "my-project",
+			},
+		},
+	}
+
+	err := dispatcher.DispatchAgentStart(ctx, agent, "")
+	if err != nil {
+		t.Fatalf("DispatchAgentStart failed: %v", err)
+	}
+
+	if !mockClient.startCalled {
+		t.Fatal("expected StartAgent to be called")
+	}
+
+	// Verify GCP identity env vars
+	if v := mockClient.lastResolvedEnv["SCION_METADATA_MODE"]; v != "assign" {
+		t.Errorf("expected SCION_METADATA_MODE='assign', got %q", v)
+	}
+	if v := mockClient.lastResolvedEnv["SCION_METADATA_SA_EMAIL"]; v != "sa@proj.iam.gserviceaccount.com" {
+		t.Errorf("expected SCION_METADATA_SA_EMAIL='sa@proj.iam.gserviceaccount.com', got %q", v)
+	}
+	if v := mockClient.lastResolvedEnv["SCION_METADATA_PROJECT_ID"]; v != "my-project" {
+		t.Errorf("expected SCION_METADATA_PROJECT_ID='my-project', got %q", v)
+	}
+}
+
+func TestHTTPAgentDispatcher_DispatchAgentStart_GCPBlockMode(t *testing.T) {
+	ctx := context.Background()
+	memStore := createTestStore(t)
+
+	grove := &store.Grove{
+		ID:        "grove-gcp-block",
+		Name:      "gcp-grove",
+		Slug:      "gcp-grove",
+		GitRemote: "https://github.com/example/repo.git",
+	}
+	if err := memStore.CreateGrove(ctx, grove); err != nil {
+		t.Fatalf("failed to create grove: %v", err)
+	}
+
+	broker := &store.RuntimeBroker{
+		ID:       "broker-gcp-block",
+		Name:     "test-broker",
+		Slug:     "test-broker",
+		Endpoint: "http://localhost:9800",
+		Status:   store.BrokerStatusOnline,
+	}
+	if err := memStore.CreateRuntimeBroker(ctx, broker); err != nil {
+		t.Fatalf("failed to create runtime broker: %v", err)
+	}
+
+	provider := &store.GroveProvider{
+		GroveID:    "grove-gcp-block",
+		BrokerID:   "broker-gcp-block",
+		BrokerName: "test-broker",
+		LocalPath:  "/home/user/projects/myproject/.scion",
+		Status:     store.BrokerStatusOnline,
+	}
+	if err := memStore.AddGroveProvider(ctx, provider); err != nil {
+		t.Fatalf("failed to add grove provider: %v", err)
+	}
+
+	mockClient := &mockRuntimeBrokerClient{}
+	dispatcher := NewHTTPAgentDispatcherWithClient(memStore, mockClient, false, slog.Default())
+
+	agent := &store.Agent{
+		ID:              "agent-gcp-block",
+		Name:            "gcp-agent",
+		Slug:            "gcp-agent",
+		GroveID:         "grove-gcp-block",
+		RuntimeBrokerID: "broker-gcp-block",
+		AppliedConfig: &store.AgentAppliedConfig{
+			GCPIdentity: &store.GCPIdentityConfig{
+				MetadataMode: store.GCPMetadataModeBlock,
+			},
+		},
+	}
+
+	err := dispatcher.DispatchAgentStart(ctx, agent, "")
+	if err != nil {
+		t.Fatalf("DispatchAgentStart failed: %v", err)
+	}
+
+	if v := mockClient.lastResolvedEnv["SCION_METADATA_MODE"]; v != "block" {
+		t.Errorf("expected SCION_METADATA_MODE='block', got %q", v)
+	}
+	// SA details should NOT be present for block mode
+	if v := mockClient.lastResolvedEnv["SCION_METADATA_SA_EMAIL"]; v != "" {
+		t.Errorf("expected empty SCION_METADATA_SA_EMAIL in block mode, got %q", v)
+	}
+}
