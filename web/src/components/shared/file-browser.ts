@@ -226,6 +226,38 @@ const PREVIEWABLE_EXTENSIONS = new Set([
   '.pdf',
 ]);
 
+/** Extensions that can be opened in the inline code editor. */
+const EDITABLE_EXTENSIONS = new Set([
+  // Markdown
+  '.md',
+  // Data formats
+  '.json', '.yaml', '.yml', '.toml',
+  // Shell
+  '.sh', '.bash', '.zsh',
+  // Programming languages
+  '.go', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+  '.py', '.rs', '.java', '.c', '.cpp', '.h', '.hpp', '.cs',
+  '.rb', '.php', '.swift', '.kt', '.scala', '.r', '.lua',
+  '.pl', '.ex', '.exs', '.elm', '.hs', '.clj',
+  // Web
+  '.css', '.scss', '.less', '.html', '.htm', '.xml', '.xsl',
+  // Config & text
+  '.txt', '.log', '.csv', '.tsv', '.ini', '.cfg', '.conf',
+  '.env', '.gitignore', '.editorconfig',
+  '.dockerfile', '.makefile',
+  // SQL
+  '.sql',
+]);
+
+/** Maximum file size that can be opened in the editor (1MB). */
+const MAX_EDITABLE_FILE_SIZE = 1 * 1024 * 1024;
+
+function isEditable(filePath: string, fileSize: number): boolean {
+  if (fileSize > MAX_EDITABLE_FILE_SIZE) return false;
+  const ext = filePath.includes('.') ? '.' + filePath.split('.').pop()!.toLowerCase() : '';
+  return EDITABLE_EXTENSIONS.has(ext);
+}
+
 function isPreviewable(filePath: string): boolean {
   const ext = filePath.includes('.') ? '.' + filePath.split('.').pop()!.toLowerCase() : '';
   return PREVIEWABLE_EXTENSIONS.has(ext);
@@ -570,6 +602,16 @@ export class ScionFileBrowser extends LitElement {
     if (url) window.open(url, '_blank');
   }
 
+  private handleEdit(filePath: string): void {
+    this.dispatchEvent(
+      new CustomEvent('file-edit-requested', {
+        detail: { path: filePath },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
   private handleNewFile(): void {
     this.dispatchEvent(new CustomEvent('file-create-requested', { bubbles: true, composed: true }));
   }
@@ -764,6 +806,15 @@ export class ScionFileBrowser extends LitElement {
                             disabled
                           ></sl-icon-button>
                         `}
+                    ${this.editable && isEditable(file.path, file.size)
+                      ? html`
+                          <sl-icon-button
+                            name="pencil"
+                            label="Edit ${file.path}"
+                            @click=${() => this.handleEdit(file.path)}
+                          ></sl-icon-button>
+                        `
+                      : nothing}
                     <sl-icon-button
                       name="download"
                       label="Download ${file.path}"

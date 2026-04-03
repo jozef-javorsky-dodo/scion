@@ -374,17 +374,17 @@ Renders markdown as sanitized HTML.
 - [x] Add "New File" button to file browser toolbar
 - [x] Verify no regressions in existing file browser functionality
 
-### Phase 2: Core Editor
+### Phase 2: Core Editor ✅
 
-- [ ] Add `scion-code-editor` component wrapping CodeMirror 6 (lazy-loaded) with basic language modes (markdown, JSON, YAML, shell, Go, TypeScript)
-- [ ] Add `scion-file-editor` component with toolbar (save, revert, close)
-- [ ] Add `?format=json` support to existing download endpoint
-- [ ] Add `PUT` endpoint for writing file content
-- [ ] Add pencil icon to `scion-file-browser` rows (for editable file types)
-- [ ] Full-width replacement layout (Option B)
-- [ ] "New File" creation flow via editor (filename input + empty buffer)
-- [ ] Gate on `update` capability
-- [ ] File size limit enforcement (1MB) with graceful fallback to download
+- [x] Add `scion-code-editor` component wrapping CodeMirror 6 (lazy-loaded) with basic language modes (markdown, JSON, YAML, shell, Go, TypeScript)
+- [x] Add `scion-file-editor` component with toolbar (save, revert, close)
+- [x] Add `?format=json` support to existing download endpoint
+- [x] Add `PUT` endpoint for writing file content
+- [x] Add pencil icon to `scion-file-browser` rows (for editable file types)
+- [x] Full-width replacement layout (Option B)
+- [x] "New File" creation flow via editor (filename input + empty buffer)
+- [x] Gate on `update` capability
+- [x] File size limit enforcement (1MB) with graceful fallback to download
 
 ### Phase 3: Markdown Preview
 

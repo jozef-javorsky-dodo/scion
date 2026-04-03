@@ -34,8 +34,11 @@ import '../shared/status-badge.js';
 import '../shared/view-toggle.js';
 import '../shared/agent-message-viewer.js';
 import '../shared/file-browser.js';
+import '../shared/file-editor.js';
 import { WorkspaceFileBrowserDataSource, SharedDirFileBrowserDataSource } from '../shared/file-browser.js';
 import type { FileBrowserDataSource } from '../shared/file-browser.js';
+import { WorkspaceFileEditorDataSource, SharedDirFileEditorDataSource } from '../shared/file-editor.js';
+import type { FileEditorDataSource } from '../shared/file-editor.js';
 
 @customElement('scion-page-grove-detail')
 export class ScionPageGroveDetail extends LitElement {
@@ -127,6 +130,17 @@ export class ScionPageGroveDetail extends LitElement {
    */
   @state()
   private messagesExpanded = false;
+
+  /**
+   * Path of the file currently open in the editor (null = editor closed, '' = new file)
+   */
+  @state()
+  private editingFilePath: string | null = null;
+
+  /**
+   * Per-tab editor data sources keyed by tab name
+   */
+  private editorDataSources: Record<string, FileEditorDataSource> = {};
 
   static override styles = css`
     :host {
@@ -530,6 +544,10 @@ export class ScionPageGroveDetail extends LitElement {
       padding: 0;
     }
 
+    .editor-back-row {
+      margin-bottom: 0.5rem;
+    }
+
     .tab-label-truncated {
       max-width: 10rem;
       overflow: hidden;
@@ -756,6 +774,34 @@ export class ScionPageGroveDetail extends LitElement {
       }
     }
     return this.fileBrowserDataSources[tabName];
+  }
+
+  private getEditorDataSource(tabName: string): FileEditorDataSource {
+    if (!this.editorDataSources[tabName]) {
+      if (tabName === 'workspace') {
+        this.editorDataSources[tabName] = new WorkspaceFileEditorDataSource(this.groveId);
+      } else {
+        this.editorDataSources[tabName] = new SharedDirFileEditorDataSource(this.groveId, tabName);
+      }
+    }
+    return this.editorDataSources[tabName];
+  }
+
+  private handleFileEditRequested(e: CustomEvent<{ path: string }>): void {
+    this.editingFilePath = e.detail.path;
+  }
+
+  private handleFileCreateRequested(): void {
+    this.editingFilePath = '';
+  }
+
+  private handleEditorClosed(): void {
+    this.editingFilePath = null;
+  }
+
+  private handleFileSaved(): void {
+    // Refresh the file browser to reflect the saved/new file
+    this.refreshActiveFileBrowser();
   }
 
 
@@ -1121,6 +1167,7 @@ export class ScionPageGroveDetail extends LitElement {
   private renderFilesSection() {
     const tabs = this.getFileTabs();
     const isEditable = can(this.grove?._capabilities, 'update');
+    const isEditorOpen = this.editingFilePath !== null;
 
     return html`
       <div class="workspace-section">
@@ -1130,29 +1177,49 @@ export class ScionPageGroveDetail extends LitElement {
           </div>
         </div>
 
-        <div class="files-tab-header">
-          <sl-tab-group class="files-tab-group" @sl-tab-show=${this.onFileTabChange}>
-            ${tabs.map(
-              (tab) => html`
-                <sl-tab slot="nav" panel=${tab.key} ?active=${tab.key === this.activeFileTab}>
-                  <span class="tab-label-truncated" title=${tab.label}>${this.truncateTabLabel(tab.label)}</span>
-                </sl-tab>
-              `
-            )}
-            ${tabs.map(
-              (tab) => html`
-                <sl-tab-panel name=${tab.key}>
-                  <scion-file-browser
-                    data-tab=${tab.key}
-                    .dataSource=${this.getTabDataSource(tab.key)}
-                    ?editable=${isEditable}
-                    ?showArchive=${tab.key === 'workspace'}
-                  ></scion-file-browser>
-                </sl-tab-panel>
-              `
-            )}
-          </sl-tab-group>
-        </div>
+        ${isEditorOpen
+          ? html`
+              <div class="editor-back-row">
+                <sl-button size="small" variant="text" @click=${this.handleEditorClosed}>
+                  <sl-icon slot="prefix" name="arrow-left"></sl-icon>
+                  Back to files
+                </sl-button>
+              </div>
+              <scion-file-editor
+                .filePath=${this.editingFilePath || ''}
+                .dataSource=${this.getEditorDataSource(this.activeFileTab)}
+                ?readonly=${!isEditable}
+                @file-saved=${this.handleFileSaved}
+                @editor-closed=${this.handleEditorClosed}
+              ></scion-file-editor>
+            `
+          : html`
+              <div class="files-tab-header">
+                <sl-tab-group class="files-tab-group" @sl-tab-show=${this.onFileTabChange}>
+                  ${tabs.map(
+                    (tab) => html`
+                      <sl-tab slot="nav" panel=${tab.key} ?active=${tab.key === this.activeFileTab}>
+                        <span class="tab-label-truncated" title=${tab.label}>${this.truncateTabLabel(tab.label)}</span>
+                      </sl-tab>
+                    `
+                  )}
+                  ${tabs.map(
+                    (tab) => html`
+                      <sl-tab-panel name=${tab.key}>
+                        <scion-file-browser
+                          data-tab=${tab.key}
+                          .dataSource=${this.getTabDataSource(tab.key)}
+                          ?editable=${isEditable}
+                          ?showArchive=${tab.key === 'workspace'}
+                          @file-edit-requested=${this.handleFileEditRequested}
+                          @file-create-requested=${this.handleFileCreateRequested}
+                        ></scion-file-browser>
+                      </sl-tab-panel>
+                    `
+                  )}
+                </sl-tab-group>
+              </div>
+            `}
       </div>
     `;
   }
