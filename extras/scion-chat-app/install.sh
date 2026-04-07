@@ -297,35 +297,78 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Patch Hub settings.yaml — add broker plugin entry
+# 5. Patch Hub settings.yaml — add broker plugin entry and enable message broker
 # ---------------------------------------------------------------------------
 step "Patching Hub settings.yaml"
 
+HUB_SETTINGS_CHANGED=0
+
 if [[ ! -f "${SETTINGS_FILE}" ]]; then
     substep "No settings.yaml found at ${SETTINGS_FILE}, skipping"
-elif grep -q 'googlechat' "${SETTINGS_FILE}"; then
-    substep "settings.yaml already has googlechat plugin config"
 else
-    # The starter-hub settings.yaml doesn't include a plugins section.
-    # If a future version adds one, we handle both cases.
-    if grep -q '^plugins:' "${SETTINGS_FILE}"; then
-        # plugins key exists — append under it.
-        # Insert after the 'plugins:' line. If 'broker:' also exists,
-        # insert the googlechat entry under broker instead.
-        if grep -q '^\s*broker:' "${SETTINGS_FILE}"; then
-            sudo sed -i '/^\s*broker:/a\    googlechat:\n      self_managed: true\n      address: "localhost:9090"' "${SETTINGS_FILE}"
-        else
-            sudo sed -i '/^plugins:/a\  broker:\n    googlechat:\n      self_managed: true\n      address: "localhost:9090"' "${SETTINGS_FILE}"
-        fi
+    # 5a. Add the googlechat plugin entry under plugins.broker.
+    if grep -q 'googlechat' "${SETTINGS_FILE}"; then
+        substep "settings.yaml already has googlechat plugin config"
     else
-        printf '\nplugins:\n  broker:\n    googlechat:\n      self_managed: true\n      address: "localhost:9090"\n' | sudo tee -a "${SETTINGS_FILE}" >/dev/null
+        # The starter-hub settings.yaml doesn't include a plugins section.
+        # If a future version adds one, we handle both cases.
+        if grep -q '^plugins:' "${SETTINGS_FILE}"; then
+            # plugins key exists — append under it.
+            # Insert after the 'plugins:' line. If 'broker:' also exists,
+            # insert the googlechat entry under broker instead.
+            if grep -q '^\s*broker:' "${SETTINGS_FILE}"; then
+                sudo sed -i '/^\s*broker:/a\    googlechat:\n      self_managed: true\n      address: "localhost:9090"' "${SETTINGS_FILE}"
+            else
+                sudo sed -i '/^plugins:/a\  broker:\n    googlechat:\n      self_managed: true\n      address: "localhost:9090"' "${SETTINGS_FILE}"
+            fi
+        else
+            printf '\nplugins:\n  broker:\n    googlechat:\n      self_managed: true\n      address: "localhost:9090"\n' | sudo tee -a "${SETTINGS_FILE}" >/dev/null
+        fi
+        substep "settings.yaml updated with googlechat plugin config"
+        HUB_SETTINGS_CHANGED=1
     fi
-    substep "settings.yaml updated with googlechat plugin config"
+
+    # 5b. Enable the message broker with type "googlechat" so the hub
+    # routes outbound messages through the broker plugin.
+    # Check for message_broker with enabled+type already configured.
+    if grep -q 'message_broker' "${SETTINGS_FILE}" && \
+       grep -A2 'message_broker' "${SETTINGS_FILE}" | grep -q 'enabled: true'; then
+        substep "settings.yaml already has message_broker enabled"
+    else
+        # Replace the empty "message_broker: {}" or bare "message_broker:"
+        # with the full enabled block. If neither exists, insert under server:.
+        if grep -qE '^\s+message_broker:\s*\{\}' "${SETTINGS_FILE}"; then
+            sudo sed -i 's/^\(\s*\)message_broker:\s*{}/\1message_broker:\n\1    enabled: true\n\1    type: "googlechat"/' "${SETTINGS_FILE}"
+        elif grep -qE '^\s+message_broker:\s*$' "${SETTINGS_FILE}"; then
+            # Bare key with no value — add children on subsequent lines.
+            sudo sed -i '/^\s*message_broker:\s*$/a\        enabled: true\n        type: "googlechat"' "${SETTINGS_FILE}"
+        elif ! grep -q 'message_broker' "${SETTINGS_FILE}"; then
+            # No message_broker key at all — insert under server:.
+            sudo sed -i '/^\s*server:/a\    message_broker:\n        enabled: true\n        type: "googlechat"' "${SETTINGS_FILE}"
+        else
+            substep "WARNING: message_broker exists but is not enabled — please verify manually"
+        fi
+        if grep -A2 'message_broker' "${SETTINGS_FILE}" | grep -q 'enabled: true'; then
+            substep "settings.yaml updated: message_broker enabled with type googlechat"
+            HUB_SETTINGS_CHANGED=1
+        fi
+    fi
 fi
 
 # ---------------------------------------------------------------------------
 # 6. Start / restart
 # ---------------------------------------------------------------------------
-step "Restarting scion-chat-app"
+step "Restarting services"
+
+# Restart the hub first if settings changed (it needs to load the broker
+# plugin before the chat app connects).
+if [[ "${HUB_SETTINGS_CHANGED}" -eq 1 ]]; then
+    substep "Hub settings changed — restarting scion-hub"
+    sudo systemctl restart scion-hub
+    # Give the hub a moment to start the broker plugin listener before the
+    # chat app tries to connect.
+    sleep 2
+fi
+
 sudo systemctl restart scion-chat-app
 substep "Done — check status with: journalctl -u scion-chat-app -f"
