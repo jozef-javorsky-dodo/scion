@@ -32,6 +32,7 @@ import (
 // It handles discovery, loading, dispensing, and shutdown of plugin processes.
 type Manager struct {
 	clients         map[string]*goplugin.Client // "type:name" -> client
+	dispensed       map[string]interface{}      // "type:name" -> dispensed interface (cached)
 	selfManaged     map[string]bool             // "type:name" -> true if self-managed
 	mu              sync.RWMutex
 	logger          *slog.Logger
@@ -45,6 +46,7 @@ func NewManager(logger *slog.Logger) *Manager {
 	}
 	return &Manager{
 		clients:         make(map[string]*goplugin.Client),
+		dispensed:       make(map[string]interface{}),
 		selfManaged:     make(map[string]bool),
 		logger:          logger,
 		brokerCallbacks: &HostCallbacksForwarder{},
@@ -229,9 +231,14 @@ func (m *Manager) loadPlugin(dp DiscoveredPlugin) error {
 		if !m.selfManaged[key] {
 			existing.Kill()
 		}
+		delete(m.dispensed, key)
 	}
 	m.clients[key] = client
 	m.selfManaged[key] = dp.SelfManaged
+	// Cache the dispensed interface so subsequent Get() calls don't
+	// trigger a second Dispense (which would start another AcceptAndServe
+	// on the same MuxBroker stream ID, causing a timeout).
+	m.dispensed[key] = raw
 	m.mu.Unlock()
 
 	return nil
@@ -288,16 +295,29 @@ func (r *selfManagedRunner) HostToPlugin(hostNet, hostAddr string) (string, stri
 }
 
 // Get returns the dispensed plugin interface for the given type and name.
+// It returns a cached instance from loadPlugin if available, avoiding a
+// second Dispense call that would create a duplicate MuxBroker AcceptAndServe.
 func (m *Manager) Get(pluginType, name string) (interface{}, error) {
 	key := pluginType + ":" + name
 	m.mu.RLock()
-	client, ok := m.clients[key]
+	cached, hasCached := m.dispensed[key]
+	_, ok := m.clients[key]
 	m.mu.RUnlock()
 
 	if !ok {
 		return nil, fmt.Errorf("plugin not loaded: %s/%s", pluginType, name)
 	}
 
+	if hasCached {
+		return cached, nil
+	}
+
+	// Fallback: dispense fresh (should not normally happen since loadPlugin
+	// always caches, but keeps the API robust).
+	m.logger.Warn("dispensing plugin without cache (unexpected)",
+		"type", pluginType, "name", name)
+
+	client := m.clients[key]
 	rpcClient, err := client.Client()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get RPC client for %s/%s: %w", pluginType, name, err)
@@ -393,6 +413,7 @@ func (m *Manager) Shutdown() {
 		client.Kill()
 	}
 	m.clients = make(map[string]*goplugin.Client)
+	m.dispensed = make(map[string]interface{})
 	m.selfManaged = make(map[string]bool)
 
 	goplugin.CleanupClients()
