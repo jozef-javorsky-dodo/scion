@@ -16,26 +16,32 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/GoogleCloudPlatform/scion/pkg/hubclient"
 )
 
+var errDeviceFlowProviderRequired = errors.New("device flow provider is required")
+
 // DeviceFlowAuth handles the OAuth 2.0 Device Authorization Grant flow
 // for headless environments where a browser cannot be opened directly.
 type DeviceFlowAuth struct {
-	client hubclient.AuthService
-	output io.Writer
+	client   hubclient.AuthService
+	output   io.Writer
+	provider string
 }
 
 // NewDeviceFlowAuth creates a new DeviceFlowAuth.
-func NewDeviceFlowAuth(client hubclient.AuthService) *DeviceFlowAuth {
+func NewDeviceFlowAuth(client hubclient.AuthService, provider string) *DeviceFlowAuth {
 	return &DeviceFlowAuth{
-		client: client,
-		output: os.Stdout,
+		client:   client,
+		output:   os.Stdout,
+		provider: provider,
 	}
 }
 
@@ -45,8 +51,12 @@ func NewDeviceFlowAuth(client hubclient.AuthService) *DeviceFlowAuth {
 // 3. Polls for authorization completion
 // 4. Returns the token response on success
 func (d *DeviceFlowAuth) Authenticate(ctx context.Context) (*hubclient.CLITokenResponse, error) {
+	if strings.TrimSpace(d.provider) == "" {
+		return nil, errDeviceFlowProviderRequired
+	}
+
 	// Request device code
-	codeResp, err := d.client.RequestDeviceCode(ctx, "google")
+	codeResp, err := d.client.RequestDeviceCode(ctx, d.provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to request device code: %w", err)
 	}
@@ -78,7 +88,7 @@ func (d *DeviceFlowAuth) Authenticate(ctx context.Context) (*hubclient.CLITokenR
 			return nil, fmt.Errorf("device authorization expired")
 		}
 
-		pollResp, err := d.client.PollDeviceToken(ctx, codeResp.DeviceCode, "google")
+		pollResp, err := d.client.PollDeviceToken(ctx, codeResp.DeviceCode, d.provider)
 		if err != nil {
 			return nil, fmt.Errorf("failed to poll device token: %w", err)
 		}

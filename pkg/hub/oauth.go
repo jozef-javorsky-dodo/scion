@@ -23,6 +23,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/GoogleCloudPlatform/scion/pkg/hubclient"
 )
 
 // OAuthProviderConfig holds OAuth credentials for a single provider.
@@ -45,9 +47,9 @@ func (c *OAuthClientConfig) IsConfigured() bool {
 // IsProviderConfigured returns true if the specified provider is configured.
 func (c *OAuthClientConfig) IsProviderConfigured(provider string) bool {
 	switch provider {
-	case "google":
+	case hubclient.OAuthProviderGoogle:
 		return c.Google.ClientID != "" && c.Google.ClientSecret != ""
-	case "github":
+	case hubclient.OAuthProviderGitHub:
 		return c.GitHub.ClientID != "" && c.GitHub.ClientSecret != ""
 	default:
 		return false
@@ -57,9 +59,9 @@ func (c *OAuthClientConfig) IsProviderConfigured(provider string) bool {
 // GetProvider returns the provider config for the specified provider.
 func (c *OAuthClientConfig) GetProvider(provider string) OAuthProviderConfig {
 	switch provider {
-	case "google":
+	case hubclient.OAuthProviderGoogle:
 		return c.Google
-	case "github":
+	case hubclient.OAuthProviderGitHub:
 		return c.GitHub
 	default:
 		return OAuthProviderConfig{}
@@ -88,17 +90,21 @@ func (c *OAuthConfig) IsProviderConfigured(provider string) bool {
 	return c.Web.IsProviderConfigured(provider) || c.CLI.IsProviderConfigured(provider) || c.Device.IsProviderConfigured(provider)
 }
 
-// ClientType represents the type of client (web or CLI).
-type OAuthClientType string
+// OAuthClientType represents the type of client (web or CLI).
+type OAuthClientType = hubclient.OAuthClientType
 
 const (
 	// OAuthClientTypeWeb is for web browser-based OAuth flows.
-	OAuthClientTypeWeb OAuthClientType = "web"
+	OAuthClientTypeWeb = hubclient.OAuthClientTypeWeb
 	// OAuthClientTypeCLI is for CLI localhost callback OAuth flows.
-	OAuthClientTypeCLI OAuthClientType = "cli"
+	OAuthClientTypeCLI = hubclient.OAuthClientTypeCLI
 	// OAuthClientTypeDevice is for device authorization grant (headless) flows.
-	OAuthClientTypeDevice OAuthClientType = "device"
+	OAuthClientTypeDevice = hubclient.OAuthClientTypeDevice
 )
+
+func oauthProviderOrder() []string {
+	return hubclient.OAuthProviderOrder()
+}
 
 // OAuthService handles OAuth operations for authentication.
 type OAuthService struct {
@@ -135,6 +141,20 @@ func (s *OAuthService) getClientConfig(clientType OAuthClientType) OAuthClientCo
 func (s *OAuthService) IsProviderConfiguredForClient(clientType OAuthClientType, provider string) bool {
 	cfg := s.getClientConfig(clientType)
 	return cfg.IsProviderConfigured(provider)
+}
+
+// ConfiguredProvidersForClient returns the configured OAuth providers for the
+// given client type in stable display order.
+func (s *OAuthService) ConfiguredProvidersForClient(clientType OAuthClientType) []string {
+	order := oauthProviderOrder()
+	providers := make([]string, 0, len(order))
+	for _, provider := range order {
+		if s.IsProviderConfiguredForClient(clientType, provider) {
+			providers = append(providers, provider)
+		}
+	}
+
+	return providers
 }
 
 // OAuthUserInfo contains user information retrieved from an OAuth provider.
@@ -179,9 +199,9 @@ func (s *OAuthService) GetAuthorizationURLForClient(clientType OAuthClientType, 
 	cfg := s.getClientConfig(clientType)
 
 	switch provider {
-	case "google":
+	case hubclient.OAuthProviderGoogle:
 		return s.getGoogleAuthURLWithConfig(cfg.Google, callbackURL, state)
-	case "github":
+	case hubclient.OAuthProviderGitHub:
 		return s.getGitHubAuthURLWithConfig(cfg.GitHub, callbackURL, state)
 	default:
 		return "", fmt.Errorf("unsupported OAuth provider: %s", provider)
