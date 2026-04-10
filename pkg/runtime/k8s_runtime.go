@@ -170,6 +170,13 @@ func isSyncTransientError(err error) bool {
 	return false
 }
 
+func ensureAnnotations(annotations map[string]string) map[string]string {
+	if annotations != nil {
+		return annotations
+	}
+	return make(map[string]string)
+}
+
 func (r *KubernetesRuntime) Run(ctx context.Context, config RunConfig) (string, error) {
 	fmt.Printf("Starting agent '%s' on Kubernetes...\n", config.Name)
 	namespace := r.DefaultNamespace
@@ -195,32 +202,24 @@ func (r *KubernetesRuntime) Run(ctx context.Context, config RunConfig) (string, 
 
 	// Persist workspace path in annotations for later sync
 	if config.Workspace != "" {
-		if config.Annotations == nil {
-			config.Annotations = make(map[string]string)
-		}
+		config.Annotations = ensureAnnotations(config.Annotations)
 		config.Annotations["scion.workspace"] = config.Workspace
 	}
 
 	if config.GitClone != nil {
-		if config.Annotations == nil {
-			config.Annotations = make(map[string]string)
-		}
+		config.Annotations = ensureAnnotations(config.Annotations)
 		config.Annotations["scion.git_clone"] = "true"
 		config.Annotations["scion.git_clone_url"] = config.GitClone.URL
 	}
 
 	if config.HomeDir != "" {
-		if config.Annotations == nil {
-			config.Annotations = make(map[string]string)
-		}
+		config.Annotations = ensureAnnotations(config.Annotations)
 		config.Annotations["scion.homedir"] = config.HomeDir
 		config.Annotations["scion.username"] = config.UnixUsername
 	}
 
 	// Persist the resolved namespace as an annotation for lifecycle operations
-	if config.Annotations == nil {
-		config.Annotations = make(map[string]string)
-	}
+	config.Annotations = ensureAnnotations(config.Annotations)
 	config.Annotations["scion.namespace"] = namespace
 
 	// Pre-clean stale resources from a previous agent with the same name.
@@ -971,8 +970,14 @@ func (r *KubernetesRuntime) buildPod(namespace string, config RunConfig) (*corev
 
 	// Security context: set FSGroup from host GID for volume permission alignment.
 	hostGID := int64(os.Getgid())
+	runAsNonRoot := true
+	allowPrivilegeEscalation := false
 	podSecurityContext := &corev1.PodSecurityContext{
-		FSGroup: &hostGID,
+		FSGroup:      &hostGID,
+		RunAsNonRoot: &runAsNonRoot,
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
 	}
 
 	// Determine image pull policy
@@ -1009,6 +1014,12 @@ func (r *KubernetesRuntime) buildPod(namespace string, config RunConfig) (*corev
 					WorkingDir:      "/workspace",
 					Stdin:           true,
 					TTY:             true,
+					SecurityContext: &corev1.SecurityContext{
+						AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+						Capabilities: &corev1.Capabilities{
+							Drop: []corev1.Capability{"ALL"},
+						},
+					},
 					VolumeMounts: []corev1.VolumeMount{
 						{Name: "workspace", MountPath: "/workspace"},
 					},
@@ -1187,9 +1198,7 @@ func (r *KubernetesRuntime) buildPod(namespace string, config RunConfig) (*corev
 				ReadOnly:  v.ReadOnly,
 			})
 
-			if pod.Annotations == nil {
-				pod.Annotations = make(map[string]string)
-			}
+			pod.Annotations = ensureAnnotations(pod.Annotations)
 			pod.Annotations["gke-gcsfuse/volumes"] = "true"
 
 			gcsVolumes = append(gcsVolumes, gcsVolInfo{
@@ -1217,9 +1226,7 @@ func (r *KubernetesRuntime) buildPod(namespace string, config RunConfig) (*corev
 	if len(gcsVolumes) > 0 {
 		if data, err := json.Marshal(gcsVolumes); err == nil {
 			encoded := base64.StdEncoding.EncodeToString(data)
-			if pod.Annotations == nil {
-				pod.Annotations = make(map[string]string)
-			}
+			pod.Annotations = ensureAnnotations(pod.Annotations)
 			pod.Annotations["scion.gcs_volumes"] = encoded
 		}
 	}
