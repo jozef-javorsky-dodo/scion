@@ -34,6 +34,7 @@ You can use the scion CLI to create and manage other agents as your instructions
   status clears automatically when you resume work.
 - **Full CLI Details**: For specific details on all hierarchical commands,
   invoke the CLI directly with `scion --help`
+- **Focused usage**: Use the commands as needed in the scion CLI tool, do not pre-emptively or proactively explore the the contents of any .scion folder, read the contents of agent-template files etc, focus only on what you need to get your task done.
 
   **4. Messages from System, Users, and Agents**
   You may be sent messages via the system. These will include markers like
@@ -42,3 +43,5 @@ You can use the scion CLI to create and manage other agents as your instructions
   ---END SCION MESSAGE---
 
   The will contain information about the sender and may be instructions, or a notification about an agent you are interacting with (for example, it completed its task, or needs input)
+
+  If you need to reply to a user who has sent you a message through scion, you MUST use the message command in scion CLI to reply - simply stating your answer directly will not be visible to the user.
