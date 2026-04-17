@@ -83,8 +83,9 @@ func (d *DiscordChannel) Validate() error {
 	if u.Scheme != "https" {
 		return fmt.Errorf("discord webhook_url must use https:// (got %q)", u.Scheme)
 	}
-	if !allowedDiscordHosts[u.Host] {
-		return fmt.Errorf("discord webhook_url host %q is not a recognised Discord domain (expected one of: discord.com, discordapp.com, ptb.discord.com, canary.discord.com)", u.Host)
+	host := strings.ToLower(u.Hostname())
+	if !allowedDiscordHosts[host] {
+		return fmt.Errorf("discord webhook_url host %q is not a recognised Discord domain (expected one of: discord.com, discordapp.com, ptb.discord.com, canary.discord.com)", host)
 	}
 	if !strings.HasPrefix(u.Path, "/api/webhooks/") {
 		return fmt.Errorf("discord webhook_url path must begin with /api/webhooks/ (got %q)", u.Path)
@@ -108,7 +109,6 @@ const (
 // Discord embed size limits (from the webhook API docs).
 const (
 	discordMaxDescription = 2048 // per-embed description cap
-	discordMaxEmbedTotal  = 6000 // total chars across title+description+fields+footer
 )
 
 // discordPayload is the native Discord webhook request body.
@@ -144,29 +144,39 @@ var reDiscordRole = regexp.MustCompile(`<@&(\d+)>`)
 // The optional `!` is the legacy nickname-mention form.
 var reDiscordUser = regexp.MustCompile(`<@!?(\d+)>`)
 
-// extractDiscordRoleIDs finds all <@&NNN> role mentions in s and returns the NNNs.
+// extractDiscordRoleIDs finds all <@&NNN> role mentions in s and returns the
+// deduplicated NNNs.
 func extractDiscordRoleIDs(s string) []string {
 	matches := reDiscordRole.FindAllStringSubmatch(s, -1)
 	if len(matches) == 0 {
 		return nil
 	}
+	seen := make(map[string]struct{}, len(matches))
 	ids := make([]string, 0, len(matches))
 	for _, m := range matches {
-		ids = append(ids, m[1])
+		if _, dup := seen[m[1]]; !dup {
+			seen[m[1]] = struct{}{}
+			ids = append(ids, m[1])
+		}
 	}
 	return ids
 }
 
-// extractDiscordUserIDs finds all <@NNN> / <@!NNN> user mentions in s and returns the NNNs.
+// extractDiscordUserIDs finds all <@NNN> / <@!NNN> user mentions in s and
+// returns the deduplicated NNNs.
 // Role mentions (<@&NNN>) are not matched because `&` is not a digit.
 func extractDiscordUserIDs(s string) []string {
 	matches := reDiscordUser.FindAllStringSubmatch(s, -1)
 	if len(matches) == 0 {
 		return nil
 	}
+	seen := make(map[string]struct{}, len(matches))
 	ids := make([]string, 0, len(matches))
 	for _, m := range matches {
-		ids = append(ids, m[1])
+		if _, dup := seen[m[1]]; !dup {
+			seen[m[1]] = struct{}{}
+			ids = append(ids, m[1])
+		}
 	}
 	return ids
 }
@@ -206,7 +216,7 @@ func truncateForDiscordEmbed(s string, max int) string {
 // formatDiscordPayload builds a discordPayload from a StructuredMessage.
 // Extracted from Deliver so tests can exercise it without spinning up an
 // httptest.Server.
-func formatDiscordPayload(msg *messages.StructuredMessage, mentionOnUrgent string) discordPayload {
+func formatDiscordPayload(msg *messages.StructuredMessage, mentionOnUrgent, username, avatarURL string) discordPayload {
 	title := fmt.Sprintf("[%s] from %s", msg.Type, msg.Sender)
 	if len([]rune(title)) > 256 { // Discord embed title cap
 		title = string([]rune(title)[:253]) + "..."
@@ -226,6 +236,13 @@ func formatDiscordPayload(msg *messages.StructuredMessage, mentionOnUrgent strin
 		AllowedMentions: &discordAllowedMentions{Parse: []string{}},
 	}
 
+	if username != "" {
+		payload.Username = username
+	}
+	if avatarURL != "" {
+		payload.AvatarURL = avatarURL
+	}
+
 	if msg.Urgent && mentionOnUrgent != "" {
 		payload.Content = mentionOnUrgent
 		// Extract role and user IDs from <@&123> / <@123> patterns so Discord
@@ -239,14 +256,7 @@ func formatDiscordPayload(msg *messages.StructuredMessage, mentionOnUrgent strin
 
 // Deliver sends a notification to the Discord webhook.
 func (d *DiscordChannel) Deliver(ctx context.Context, msg *messages.StructuredMessage) error {
-	payload := formatDiscordPayload(msg, d.mentionOnUrgent)
-
-	if d.username != "" {
-		payload.Username = d.username
-	}
-	if d.avatarURL != "" {
-		payload.AvatarURL = d.avatarURL
-	}
+	payload := formatDiscordPayload(msg, d.mentionOnUrgent, d.username, d.avatarURL)
 
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -263,7 +273,10 @@ func (d *DiscordChannel) Deliver(ctx context.Context, msg *messages.StructuredMe
 	if err != nil {
 		return fmt.Errorf("discord webhook request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
 
 	// Discord returns 204 No Content on success; also accept 200 for test servers.
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {

@@ -299,10 +299,9 @@ the user's real intent.
 | `instruction`         | grey   | `#95a5a6` |
 | *(urgent — any type)* | red    | `#e74c3c` (overrides the type colour) |
 
-**Truncation:** Discord caps embed descriptions at 2048 characters and total
-embed payload at 6000 characters. Messages longer than that are truncated
-with a `…(truncated)` marker — use the webhook channel type if you need the
-full structured payload without truncation.
+**Truncation:** Discord caps embed descriptions at 2048 characters. Messages
+longer than that are truncated with a `…(truncated)` marker — use the webhook
+channel type if you need the full structured payload without truncation.
 
 **Example:**
 

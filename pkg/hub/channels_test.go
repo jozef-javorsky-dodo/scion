@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -477,7 +478,7 @@ func TestDiscordChannel_Validate(t *testing.T) {
 		{"wrong scheme", map[string]string{"webhook_url": "http://discord.com/api/webhooks/123/abc"}, true, ""},
 		{"wrong domain", map[string]string{"webhook_url": "https://example.com/api/webhooks/123/abc"}, true, ""},
 		{"slack suffix rejected", map[string]string{"webhook_url": "https://discord.com/api/webhooks/123/abc/slack"}, true, "slack"},
-		{"github domain", map[string]string{"webhook_url": "https://hooks.slack.com/services/T00/B00/xxx"}, true, ""},
+		{"slack domain", map[string]string{"webhook_url": "https://hooks.slack.com/services/T00/B00/xxx"}, true, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -499,9 +500,11 @@ func TestDiscordChannel_Deliver(t *testing.T) {
 	var received []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		buf := make([]byte, r.ContentLength)
-		r.Body.Read(buf)
-		received = buf
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		received = b
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -527,13 +530,45 @@ func TestDiscordChannel_Deliver(t *testing.T) {
 	assert.Contains(t, string(parsedJSON), `"parse":[]`)
 }
 
+func TestDiscordChannel_UsernameAndAvatar(t *testing.T) {
+	var received []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		received = b
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	ch := &DiscordChannel{
+		webhookURL: server.URL,
+		username:   "scion-bot",
+		avatarURL:  "https://example.com/avatar.png",
+		client:     http.DefaultClient,
+	}
+
+	msg := messages.NewNotification("agent:worker", "user:alice", "hello", messages.TypeStateChange)
+	err := ch.Deliver(context.Background(), msg)
+	require.NoError(t, err)
+
+	var payload discordPayload
+	require.NoError(t, json.Unmarshal(received, &payload))
+	assert.Equal(t, "scion-bot", payload.Username)
+	assert.Equal(t, "https://example.com/avatar.png", payload.AvatarURL)
+}
+
 func TestDiscordChannel_UrgentMention(t *testing.T) {
 	var received []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
-		buf := make([]byte, r.ContentLength)
-		r.Body.Read(buf)
-		received = buf
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		received = b
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
@@ -556,8 +591,8 @@ func TestDiscordChannel_UrgentMention(t *testing.T) {
 	assert.Equal(t, discordColorUrgent, payload.Embeds[0].Color)
 	require.NotNil(t, payload.AllowedMentions)
 	assert.Contains(t, payload.AllowedMentions.Roles, "9876543210")
-	assert.NotContains(t, payload.AllowedMentions.Parse, "everyone")
-	assert.NotContains(t, payload.AllowedMentions.Parse, "users")
+	assert.Empty(t, payload.AllowedMentions.Parse,
+		"parse must remain [] so @everyone/@here are never resolved")
 }
 
 func TestDiscordChannel_ColorByType(t *testing.T) {
@@ -572,7 +607,7 @@ func TestDiscordChannel_ColorByType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.msgType, func(t *testing.T) {
 			msg := messages.NewNotification("agent:worker", "user:alice", "msg", tt.msgType)
-			payload := formatDiscordPayload(msg, "")
+			payload := formatDiscordPayload(msg, "", "", "")
 			require.Len(t, payload.Embeds, 1)
 			assert.Equal(t, tt.wantColor, payload.Embeds[0].Color)
 		})
@@ -582,16 +617,13 @@ func TestDiscordChannel_ColorByType(t *testing.T) {
 func TestDiscordChannel_TruncateLongMsg(t *testing.T) {
 	longMsg := strings.Repeat("A", 5000)
 	msg := messages.NewNotification("agent:worker", "user:alice", longMsg, messages.TypeStateChange)
-	payload := formatDiscordPayload(msg, "")
+	payload := formatDiscordPayload(msg, "", "", "")
 	require.Len(t, payload.Embeds, 1)
 	assert.LessOrEqual(t, len([]rune(payload.Embeds[0].Description)), 2048)
 	assert.True(t,
 		strings.HasSuffix(payload.Embeds[0].Description, "...") ||
 			strings.HasSuffix(payload.Embeds[0].Description, "…(truncated)"),
 		"description should end with an ellipsis marker")
-	// Total embed text should be under 6000 chars
-	totalLen := len(payload.Embeds[0].Title) + len(payload.Embeds[0].Description)
-	assert.Less(t, totalLen, 6000)
 }
 
 func TestDiscordChannel_DeliverFailure(t *testing.T) {
