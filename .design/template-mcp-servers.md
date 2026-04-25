@@ -180,6 +180,8 @@ Added to `ValidateScionConfig()` in `pkg/config/validate.go`:
 
 `MCPServers` follows the same merge semantics as other map fields in `MergeScionConfig()`: entries from higher-priority layers override entries from lower-priority layers by key. An entry can be explicitly removed by setting it to a zero-value marker (TBD: `null` in YAML, or an `enabled: false` field).
 
+Harness-config `config.yaml` overrides use the **same universal `MCPServerConfig` format**, not the harness's native config format. Merging happens entirely at the scion-schema level before any translation to native format. The provisioning layer translates the final merged map once. This keeps translation logic in one place and means harness-config scripts only receive an already-merged universal config.
+
 ## Relationship to Services
 
 MCP servers and services are related but distinct concepts:
@@ -441,7 +443,7 @@ Should there be a formal mechanism to declare that an MCP server depends on a se
 - **A**: No formal mechanism. Template authors document the dependency. The service `ready_check` ensures it's running; the MCP server may fail and retry.
 - **B**: Add `depends_on: <service-name>` to `MCPServerConfig`. Provisioning validates the referenced service exists. Runtime could delay MCP server registration until the service is healthy (if supported by the harness).
 
-**Recommendation:** Defer. Option A for v1. Most harnesses handle MCP server errors gracefully (retry, ignore until needed). A `depends_on` mechanism adds complexity without clear immediate benefit.
+**Decision:** No formal mechanism. Template authors document the dependency. The service `ready_check` ensures the sidecar is running before the agent starts; harnesses handle MCP connection errors gracefully.
 
 ### Q3: MCP Servers That Are Also Services
 
@@ -452,7 +454,7 @@ Some MCP servers run as long-lived HTTP services (SSE or streamable-http transpo
 - **B**: SSE/HTTP MCP servers are automatically registered as sciontool services with sensible defaults (restart: on-failure, ready_check based on URL).
 - **C**: Add an optional `service` sub-block to `MCPServerConfig` for SSE/HTTP servers that opts into sciontool management.
 
-**Recommendation:** Option A for v1. The stdio transport is by far the most common for MCP servers in coding agents. SSE/HTTP servers are rare enough that explicit dual-definition is acceptable and avoids hidden behavior.
+**Decision:** Keep them separate. SSE/HTTP MCP servers that need lifecycle management are defined in the `services` block explicitly. No implicit registration.
 
 ### Q4: Handling Unsupported Transports
 
@@ -463,13 +465,13 @@ When a template defines an MCP server with a transport the active harness doesn'
 - **B**: Error at provisioning time. Fail the agent creation.
 - **C**: Warn at provisioning time but still create the agent. Log which MCP servers were skipped and why.
 
-**Recommendation:** Option C. A warning-but-proceed approach is consistent with how scion handles other partial capability mismatches (e.g., system prompt on a harness that doesn't support it).
+**Decision:** Delegated to the harness `provision.py` script. Since MCP provisioning runs as part of the decoupled harness configuration (which may occur after agent creation), agent creation failure is not an option. The `provision.py` script is responsible for handling unsupported transports — it can warn, skip, or error at its discretion. This is a natural consequence of the decoupled harness execution model.
 
 ### Q5: Runtime MCP Server Management
 
 Should scion provide any runtime management of MCP servers (start, stop, health check) beyond what the harness natively provides?
 
-**Recommendation:** Defer. MCP server lifecycle is the harness's responsibility. Scion's role is configuration provisioning, not runtime management of the harness's tool integrations. The `services` block handles sidecar lifecycle; MCP server process management is delegated to the harness.
+**Decision:** Config only. Scion writes the MCP server configuration into the harness's native format and stops there. The harness owns MCP server lifecycle. Sidecar process management goes through the `services` block.
 
 ## Summary
 
