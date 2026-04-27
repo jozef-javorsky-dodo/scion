@@ -126,8 +126,8 @@ type RuntimeBrokerConfig struct {
 
 	// AllowContainerScriptHarnesses controls whether the broker accepts
 	// dispatches whose harness-config declares
-	// `provisioner.type: container-script`. Defaults to false; the broker
-	// rejects container-script dispatches with 403 until enabled. See
+	// `provisioner.type: container-script`. Defaults to true; set false to
+	// block container-script dispatches on this broker. See
 	// .design/decoupled-harness-implementation.md (Phase 3) for the policy
 	// rationale.
 	AllowContainerScriptHarnesses bool `json:"allowContainerScriptHarnesses" yaml:"allowContainerScriptHarnesses" koanf:"allowContainerScriptHarnesses"`

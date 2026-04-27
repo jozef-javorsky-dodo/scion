@@ -366,8 +366,8 @@ type V1BrokerConfig struct {
 	CORS                 *V1CORSConfig `json:"cors,omitempty" yaml:"cors,omitempty" koanf:"cors"`
 	// AllowContainerScriptHarnesses controls whether this broker will
 	// dispatch agents whose harness-config declares container-script
-	// provisioning. Defaults to false; operators must explicitly opt in.
-	AllowContainerScriptHarnesses bool `json:"allow_container_script_harnesses,omitempty" yaml:"allow_container_script_harnesses,omitempty" koanf:"allow_container_script_harnesses"`
+	// provisioning. Defaults to true; set false to block container-script dispatches.
+	AllowContainerScriptHarnesses *bool `json:"allow_container_script_harnesses,omitempty" yaml:"allow_container_script_harnesses,omitempty" koanf:"allow_container_script_harnesses"`
 }
 
 // V1DatabaseConfig holds database settings.
@@ -1108,7 +1108,11 @@ func ConvertV1ServerToGlobalConfig(v1 *V1ServerConfig) *GlobalConfig {
 				gc.RuntimeBroker.CORSMaxAge = v1.Broker.CORS.MaxAge
 			}
 		}
-		gc.RuntimeBroker.AllowContainerScriptHarnesses = v1.Broker.AllowContainerScriptHarnesses
+		if v1.Broker.AllowContainerScriptHarnesses != nil {
+			gc.RuntimeBroker.AllowContainerScriptHarnesses = *v1.Broker.AllowContainerScriptHarnesses
+		} else {
+			gc.RuntimeBroker.AllowContainerScriptHarnesses = true
+		}
 	}
 
 	// Database config
@@ -1255,7 +1259,7 @@ func ConvertGlobalToV1ServerConfig(gc *GlobalConfig) *V1ServerConfig {
 		ContainerHubEndpoint:          gc.RuntimeBroker.ContainerHubEndpoint,
 		BrokerID:                      gc.RuntimeBroker.BrokerID,
 		BrokerName:                    gc.RuntimeBroker.BrokerName,
-		AllowContainerScriptHarnesses: gc.RuntimeBroker.AllowContainerScriptHarnesses,
+		AllowContainerScriptHarnesses: &gc.RuntimeBroker.AllowContainerScriptHarnesses,
 		CORS: &V1CORSConfig{
 			Enabled:        gc.RuntimeBroker.CORSEnabled,
 			AllowedOrigins: gc.RuntimeBroker.CORSAllowedOrigins,
