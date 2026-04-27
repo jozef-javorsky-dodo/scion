@@ -465,6 +465,101 @@ func TestNotificationDispatcher_UserSubscriber(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, notifs, 1)
 	assert.Equal(t, "COMPLETED", notifs[0].Status)
+
+	// Inbox message should also be created (no broker → direct persistence)
+	msgs, err := env.store.ListMessages(context.Background(), store.MessageFilter{
+		RecipientID: "user-123",
+		GroveID:     env.grove.ID,
+	}, store.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, msgs.Items, 1)
+	assert.Equal(t, "agent:watched-agent", msgs.Items[0].Sender)
+	assert.Equal(t, "user:user-123", msgs.Items[0].Recipient)
+	assert.Equal(t, messages.TypeStateChange, msgs.Items[0].Type)
+}
+
+func TestNotificationDispatcher_UserSubscriberInboxWithBroker(t *testing.T) {
+	env := setupNotificationTest(t)
+
+	// Replace the agent subscription with a user subscription
+	require.NoError(t, env.store.DeleteNotificationSubscription(context.Background(), env.sub.ID))
+	userSub := &store.NotificationSubscription{
+		ID:                api.NewUUID(),
+		AgentID:           env.watched.ID,
+		SubscriberType:    store.SubscriberTypeUser,
+		SubscriberID:      "user-broker-inbox",
+		GroveID:           env.grove.ID,
+		TriggerActivities: []string{"COMPLETED"},
+		CreatedAt:         time.Now().Add(-time.Minute),
+		CreatedBy:         "test",
+	}
+	require.NoError(t, env.store.CreateNotificationSubscription(context.Background(), userSub))
+
+	// Set up a broker proxy — inbox message should come from broker, not direct
+	rb := &recordingBroker{}
+	proxy := NewMessageBrokerProxy(rb, env.store, env.pub, func() AgentDispatcher { return env.dispatcher }, slog.Default())
+	env.nd.SetBrokerProxy(proxy)
+
+	env.nd.Start()
+	defer env.nd.Stop()
+
+	env.publishStatus("completed")
+
+	// Wait for broker to receive the notification
+	require.Eventually(t, func() bool {
+		return len(rb.getPublishes()) >= 1
+	}, 2*time.Second, 50*time.Millisecond)
+
+	// No direct inbox message should be created (broker handles persistence)
+	msgs, err := env.store.ListMessages(context.Background(), store.MessageFilter{
+		RecipientID: "user-broker-inbox",
+		GroveID:     env.grove.ID,
+	}, store.ListOptions{})
+	require.NoError(t, err)
+	assert.Empty(t, msgs.Items, "no direct inbox message when broker is present")
+}
+
+func TestNotificationDispatcher_UserSubscriberInboxWaitingForInput(t *testing.T) {
+	env := setupNotificationTest(t)
+
+	// Set the watched agent's Message field so createInboxMessage uses it
+	ctx := context.Background()
+	require.NoError(t, env.store.UpdateAgentStatus(ctx, env.watched.ID, store.AgentStatusUpdate{
+		Activity: "waiting_for_input",
+		Message:  "What branch should I target?",
+	}))
+
+	// Replace the agent subscription with a user subscription
+	require.NoError(t, env.store.DeleteNotificationSubscription(ctx, env.sub.ID))
+	userSub := &store.NotificationSubscription{
+		ID:                api.NewUUID(),
+		AgentID:           env.watched.ID,
+		SubscriberType:    store.SubscriberTypeUser,
+		SubscriberID:      "user-wfi",
+		GroveID:           env.grove.ID,
+		TriggerActivities: []string{"WAITING_FOR_INPUT"},
+		CreatedAt:         time.Now().Add(-time.Minute),
+		CreatedBy:         "test",
+	}
+	require.NoError(t, env.store.CreateNotificationSubscription(ctx, userSub))
+
+	env.nd.Start()
+	defer env.nd.Stop()
+
+	env.publishStatus("waiting_for_input")
+
+	// Wait for processing
+	time.Sleep(300 * time.Millisecond)
+
+	// Inbox message should use the agent's raw Message field and input-needed type
+	msgs, err := env.store.ListMessages(ctx, store.MessageFilter{
+		RecipientID: "user-wfi",
+		GroveID:     env.grove.ID,
+	}, store.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, msgs.Items, 1)
+	assert.Equal(t, "What branch should I target?", msgs.Items[0].Msg)
+	assert.Equal(t, messages.TypeInputNeeded, msgs.Items[0].Type)
 }
 
 func TestNotificationDispatcher_Stop(t *testing.T) {

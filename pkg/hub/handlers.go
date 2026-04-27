@@ -2033,14 +2033,6 @@ func (s *Server) handleAgentOutboundMessage(w http.ResponseWriter, r *http.Reque
 		CreatedAt:   time.Now(),
 	}
 
-	if err := s.store.CreateMessage(ctx, storeMsg); err != nil {
-		s.messageLog.Error("Failed to persist outbound message", "error", err)
-		// Non-fatal: continue with event/channel dispatch even if store fails.
-	}
-
-	// Publish SSE event so connected browser clients get real-time inbox updates.
-	s.events.PublishUserMessage(ctx, storeMsg)
-
 	// Build a structured message for external dispatch paths.
 	structuredMsg := &messages.StructuredMessage{
 		Sender:      storeMsg.Sender,
@@ -2052,7 +2044,9 @@ func (s *Server) handleAgentOutboundMessage(w http.ResponseWriter, r *http.Reque
 		Urgent:      storeMsg.Urgent,
 	}
 
-	// Dispatch through message broker plugin (e.g., chat app) if configured.
+	// Route through broker when available; otherwise persist and publish
+	// directly. The broker's deliverToUser callback handles persistence
+	// and SSE, so doing both here would create duplicate messages.
 	if bp := s.GetMessageBrokerProxy(); bp != nil {
 		if err := bp.PublishUserMessage(ctx, agent.GroveID, recipientID, structuredMsg); err != nil {
 			s.messageLog.Error("Failed to dispatch outbound message through broker",
@@ -2062,10 +2056,11 @@ func (s *Server) handleAgentOutboundMessage(w http.ResponseWriter, r *http.Reque
 				"agent_id", agent.ID, "recipient_id", recipientID, "grove_id", agent.GroveID)
 		}
 	} else {
-		s.messageLog.Debug("No message broker proxy available for outbound message",
-			"agent_id", agent.ID, "recipient_id", recipientID)
+		if err := s.store.CreateMessage(ctx, storeMsg); err != nil {
+			s.messageLog.Error("Failed to persist outbound message", "error", err)
+		}
+		s.events.PublishUserMessage(ctx, storeMsg)
 		if s.channelRegistry != nil && s.channelRegistry.Len() > 0 {
-			// Fall back to external channels (Slack, webhook, email) when no broker is configured.
 			s.channelRegistry.Dispatch(ctx, structuredMsg)
 		}
 	}

@@ -302,9 +302,13 @@ func (nd *NotificationDispatcher) storeAndDispatch(ctx context.Context, sub *sto
 		if nd.brokerProxy != nil {
 			// Broker plugin present — publish notification as a StructuredMessage
 			// through the broker so the plugin can render it (e.g., as a rich card).
+			// The broker's deliverToUser callback also persists an inbox Message.
 			nd.dispatchToBroker(ctx, sub, notif, agent.ID, agent.Slug)
 		} else {
-			// No broker plugin — fall back to channel registry (webhook/email)
+			// No broker plugin — persist an inbox message directly so the
+			// notification also appears in the user's message feed, then
+			// fall back to the channel registry for external delivery.
+			nd.createInboxMessage(ctx, sub, notif, agent)
 			nd.dispatchToChannels(ctx, sub, notif, agent.ID, agent.Slug)
 		}
 	default:
@@ -429,6 +433,44 @@ func (nd *NotificationDispatcher) dispatchToBroker(ctx context.Context, sub *sto
 		nd.log.Info("Notification dispatched to user via broker",
 			"subscriberID", sub.SubscriberID, "notificationID", notif.ID)
 	}
+}
+
+// createInboxMessage persists an inbox Message for a user notification so
+// that it appears in the user's message feed alongside agent conversations.
+// This is the non-broker path; when a broker is present, the broker's
+// deliverToUser callback handles message persistence instead.
+func (nd *NotificationDispatcher) createInboxMessage(ctx context.Context, sub *store.NotificationSubscription, notif *store.Notification, agent *store.Agent) {
+	msgType := notificationMessageType(notif.Status)
+
+	// Use the agent's current message (the raw question/status text) for
+	// actionable notifications; fall back to the formatted notification message.
+	msgBody := notif.Message
+	if agent.Message != "" && strings.EqualFold(notif.Status, "WAITING_FOR_INPUT") {
+		msgBody = agent.Message
+	}
+
+	storeMsg := &store.Message{
+		ID:          api.NewUUID(),
+		GroveID:     notif.GroveID,
+		Sender:      "agent:" + agent.Slug,
+		SenderID:    agent.ID,
+		Recipient:   "user:" + sub.SubscriberID,
+		RecipientID: sub.SubscriberID,
+		Msg:         msgBody,
+		Type:        msgType,
+		AgentID:     agent.ID,
+		CreatedAt:   time.Now(),
+	}
+
+	if err := nd.store.CreateMessage(ctx, storeMsg); err != nil {
+		nd.log.Error("Failed to persist inbox message for notification",
+			"notificationID", notif.ID, "subscriberID", sub.SubscriberID, "error", err)
+		return
+	}
+
+	nd.events.PublishUserMessage(ctx, storeMsg)
+	nd.log.Debug("Inbox message created for notification",
+		"notificationID", notif.ID, "messageID", storeMsg.ID, "subscriberID", sub.SubscriberID)
 }
 
 // formatNotificationMessage formats a notification message based on agent state and status.

@@ -99,7 +99,8 @@ func runStatusAskUser(message string) {
 		log.Error("Failed to log event: %v", err)
 	}
 
-	// Report to Hub if configured
+	// Report to Hub if configured. The status update triggers the notification
+	// system, which handles both the notification tray and inbox message creation.
 	if hubClient := hub.NewClient(); hubClient != nil && hubClient.IsConfigured() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -110,14 +111,6 @@ func runStatusAskUser(message string) {
 			Message:  message,
 		}); err != nil {
 			log.Error("Failed to report to Hub: %v", err)
-		}
-
-		// Also send an outbound message so the question lands in the human's inbox.
-		if err := hubClient.SendOutboundMessage(ctx, hub.OutboundMessage{
-			Msg:  message,
-			Type: "input-needed",
-		}); err != nil {
-			log.Error("Failed to send outbound message: %v", err)
 		}
 	}
 
