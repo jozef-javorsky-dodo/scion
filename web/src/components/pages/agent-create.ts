@@ -438,6 +438,13 @@ export class ScionPageAgentCreate extends LitElement {
           await this.loadGCPServiceAccounts();
         }
       }
+
+      // Reload harness configs scoped to the selected grove (the initial
+      // fetch above has no groveId filter and returns configs from all
+      // groves, which causes duplicates in the dropdown).
+      if (this.groveId) {
+        await this.loadHarnessConfigs();
+      }
     } catch (err) {
       console.error('Failed to load form data:', err);
       this.error = 'Failed to load form data. Please try again.';
