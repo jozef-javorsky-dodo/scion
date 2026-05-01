@@ -23,10 +23,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/GoogleCloudPlatform/scion/pkg/store"
 )
+
+var memDBCounter atomic.Int64
 
 // SQLiteStore implements the Store interface using SQLite.
 type SQLiteStore struct {
@@ -36,7 +39,8 @@ type SQLiteStore struct {
 // New creates a new SQLite store with the given database path.
 // Use ":memory:" for an in-memory database.
 func New(dbPath string) (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	dsn := buildDSN(dbPath)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown driver") {
 			return nil, fmt.Errorf("sqlite driver not registered; was the binary built with -tags no_sqlite? %w", err)
@@ -44,18 +48,32 @@ func New(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Limit to a single connection so that per-connection PRAGMAs
-	// (foreign_keys, journal_mode) are applied consistently. SQLite
-	// serializes writes anyway, so this has no performance impact.
-	db.SetMaxOpenConns(1)
-
-	// Enable foreign keys and WAL mode for better performance
-	if _, err := db.Exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to configure database: %w", err)
-	}
+	// WAL mode allows concurrent readers alongside a single writer.
+	// PRAGMAs are applied per-connection via DSN _pragma parameters,
+	// so each pooled connection gets them automatically.
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
 
 	return &SQLiteStore{db: db}, nil
+}
+
+// buildDSN converts a database path into a file: URI with per-connection
+// PRAGMA parameters for the modernc.org/sqlite driver.
+func buildDSN(dbPath string) string {
+	pragmas := "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)"
+
+	switch {
+	case dbPath == ":memory:":
+		id := memDBCounter.Add(1)
+		return fmt.Sprintf("file:memdb%d?mode=memory&cache=shared&%s", id, pragmas)
+	case strings.HasPrefix(dbPath, "file:"):
+		if strings.Contains(dbPath, "?") {
+			return dbPath + "&" + pragmas
+		}
+		return dbPath + "?" + pragmas
+	default:
+		return "file:" + dbPath + "?" + pragmas
+	}
 }
 
 // Close closes the database connection.
@@ -157,48 +175,69 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 		}
 
 		needsFKOff := foreignKeysOffMigrations[version]
+
 		if needsFKOff {
-			if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
-				return fmt.Errorf("failed to disable foreign keys for migration %d: %w", version, err)
+			if err := s.applyMigrationWithFKOff(ctx, version, migration); err != nil {
+				return err
 			}
+			continue
 		}
 
 		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
-			if needsFKOff {
-				s.db.ExecContext(ctx, "PRAGMA foreign_keys=ON")
-			}
 			return fmt.Errorf("failed to start transaction for migration %d: %w", version, err)
 		}
 
 		if _, err := tx.ExecContext(ctx, migration); err != nil {
 			tx.Rollback()
-			if needsFKOff {
-				s.db.ExecContext(ctx, "PRAGMA foreign_keys=ON")
-			}
 			return fmt.Errorf("failed to apply migration %d: %w", version, err)
 		}
 
 		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
 			tx.Rollback()
-			if needsFKOff {
-				s.db.ExecContext(ctx, "PRAGMA foreign_keys=ON")
-			}
 			return fmt.Errorf("failed to record migration %d: %w", version, err)
 		}
 
 		if err := tx.Commit(); err != nil {
-			if needsFKOff {
-				s.db.ExecContext(ctx, "PRAGMA foreign_keys=ON")
-			}
 			return fmt.Errorf("failed to commit migration %d: %w", version, err)
 		}
+	}
 
-		if needsFKOff {
-			if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
-				return fmt.Errorf("failed to re-enable foreign keys after migration %d: %w", version, err)
-			}
-		}
+	return nil
+}
+
+// applyMigrationWithFKOff runs a migration that requires PRAGMA
+// foreign_keys=OFF. It pins a single pooled connection to ensure the
+// PRAGMA, transaction, and PRAGMA-restore all share the same connection.
+func (s *SQLiteStore) applyMigrationWithFKOff(ctx context.Context, version int, migration string) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection for migration %d: %w", version, err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return fmt.Errorf("failed to disable foreign keys for migration %d: %w", version, err)
+	}
+	defer conn.ExecContext(ctx, "PRAGMA foreign_keys=ON") //nolint:errcheck
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction for migration %d: %w", version, err)
+	}
+
+	if _, err := tx.ExecContext(ctx, migration); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to apply migration %d: %w", version, err)
+	}
+
+	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to record migration %d: %w", version, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration %d: %w", version, err)
 	}
 
 	return nil

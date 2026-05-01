@@ -83,9 +83,11 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 			terminalPhase := terminalRuntimePhase(agents[i])
 
 			// Try agent-info.json first for latest status from container
+			var parsedInfo *api.AgentInfo
 			if data, err := os.ReadFile(agentInfoJSON); err == nil {
 				var info api.AgentInfo
 				if err := json.Unmarshal(data, &info); err == nil {
+					parsedInfo = &info
 					if terminalPhase == "" {
 						agents[i].Phase = info.Phase
 						agents[i].Activity = info.Activity
@@ -109,11 +111,12 @@ func (m *AgentManager) List(ctx context.Context, filter map[string]string) ([]ap
 			if terminalPhase != "" {
 				agents[i].Phase = terminalPhase
 				agents[i].Activity = ""
-				// Terminal pod phases mean the harness should already be exiting,
-				// so this is a best-effort convergence write rather than a
-				// continuously contended state update.
-				if err := persistAgentInfoState(agentInfoJSON, terminalPhase, ""); err != nil {
-					slog.Debug("failed to persist terminal agent state", "path", agentInfoJSON, "err", err)
+				// Best-effort convergence: only persist if on-disk state
+				// differs from the terminal phase we want to record.
+				if parsedInfo == nil || parsedInfo.Phase != terminalPhase || parsedInfo.Activity != "" {
+					if err := persistAgentInfoState(agentInfoJSON, terminalPhase, ""); err != nil {
+						slog.Debug("failed to persist terminal agent state", "path", agentInfoJSON, "err", err)
+					}
 				}
 			}
 

@@ -2719,3 +2719,105 @@ func TestUpdateAgentStatus_SetsLastActivityEvent(t *testing.T) {
 	assert.True(t, a.LastActivityEvent.After(pastTime),
 		"activity update should update last_activity_event")
 }
+
+// ============================================================================
+// DSN Construction Tests
+// ============================================================================
+
+func TestBuildDSN(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantExact string
+		wantRegex string
+	}{
+		{
+			name:      "memory",
+			input:     ":memory:",
+			wantRegex: `^file:memdb\d+\?mode=memory&cache=shared&_pragma=busy_timeout\(5000\)&_pragma=foreign_keys\(1\)&_pragma=journal_mode\(WAL\)$`,
+		},
+		{
+			name:      "plain path",
+			input:     "/data/scion.db",
+			wantExact: "file:/data/scion.db?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)",
+		},
+		{
+			name:      "file URI without params",
+			input:     "file:/data/scion.db",
+			wantExact: "file:/data/scion.db?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)",
+		},
+		{
+			name:      "file URI with existing params",
+			input:     "file:/data/scion.db?mode=rwc",
+			wantExact: "file:/data/scion.db?mode=rwc&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildDSN(tt.input)
+			if tt.wantExact != "" {
+				assert.Equal(t, tt.wantExact, got)
+			} else {
+				assert.Regexp(t, tt.wantRegex, got)
+			}
+		})
+	}
+}
+
+func TestConcurrentReadDuringWrite(t *testing.T) {
+	s := setupTestStore(t)
+	ctx := context.Background()
+
+	grove := &store.Grove{
+		ID:   api.NewUUID(),
+		Name: "Concurrency Test",
+		Slug: "concurrency-test",
+	}
+	require.NoError(t, s.CreateGrove(ctx, grove))
+
+	// Create several agents to write to
+	const agentCount = 10
+	agentIDs := make([]string, agentCount)
+	for i := range agentCount {
+		slug := fmt.Sprintf("agent-%d", i)
+		agent := &store.Agent{
+			ID:      api.NewUUID(),
+			Slug:    slug,
+			Name:    slug,
+			GroveID: grove.ID,
+		}
+		require.NoError(t, s.CreateAgent(ctx, agent))
+		agentIDs[i] = agent.ID
+	}
+
+	// Simulate heartbeat: write status updates for all agents sequentially
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		for _, id := range agentIDs {
+			_ = s.UpdateAgentStatus(ctx, id, store.AgentStatusUpdate{
+				Phase:     "running",
+				Activity:  "thinking",
+				Heartbeat: true,
+			})
+		}
+	}()
+
+	// Concurrent reader should not block behind the writer
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		_, _ = s.GetAgent(ctx, agentIDs[0])
+	}()
+
+	// Both should complete quickly — if the reader blocks behind all
+	// writes (old MaxOpenConns=1 behavior), this would be much slower.
+	select {
+	case <-readerDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("concurrent read timed out — likely blocked behind writes")
+	}
+
+	<-writerDone
+}
