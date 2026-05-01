@@ -499,7 +499,13 @@ func runInit(args []string) int {
 
 			// Read the agent token from the canonical token file (written by
 			// the host-side agent manager before the container started).
+			// Init runs as root — chown the file so the scion user can read it.
 			token := hub.ReadTokenFile()
+			if token != "" && targetUID > 0 {
+				if err := os.Chown(hub.TokenFilePath(), targetUID, targetGID); err != nil {
+					log.Error("Failed to chown token file to UID=%d: %v", targetUID, err)
+				}
+			}
 
 			// Start token refresh loop if token has an expiry
 			if tokenExpiry, err := hub.ParseTokenExpiry(token); err != nil {
@@ -529,6 +535,8 @@ func runInit(args []string) int {
 					tokenRefreshCtx, tokenRefreshCancel = context.WithCancel(context.Background())
 					tokenRefreshDone = hubClient.StartTokenRefresh(tokenRefreshCtx, &hub.TokenRefreshConfig{
 						RefreshAt: refreshAt,
+						ChownUID:  targetUID,
+						ChownGID:  targetGID,
 						OnRefreshed: func(newExpiry time.Time) {
 							log.Info("Token refreshed successfully, new expiry: %s", newExpiry.Format(time.RFC3339))
 						},

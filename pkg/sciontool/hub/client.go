@@ -403,6 +403,11 @@ type TokenRefreshConfig struct {
 	RefreshAt time.Time
 	// Timeout is the context timeout for each refresh request.
 	Timeout time.Duration
+	// ChownUID and ChownGID set ownership on the token file after writing.
+	// When ChownUID > 0, the file is chowned so non-root users (e.g. the
+	// scion container user) can read it. Zero values skip chown.
+	ChownUID int
+	ChownGID int
 	// OnRefreshed is called when the token is successfully refreshed.
 	OnRefreshed func(newExpiry time.Time)
 	// OnError is called when a refresh attempt fails.
@@ -472,6 +477,15 @@ func (c *Client) StartTokenRefresh(ctx context.Context, config *TokenRefreshConf
 				// Retry in 30 seconds
 				refreshAt = time.Now().Add(30 * time.Second)
 				continue
+			}
+
+			// Fix ownership after atomic rewrite (init runs as root).
+			if config.ChownUID > 0 {
+				if chownErr := os.Chown(TokenFilePath(), config.ChownUID, config.ChownGID); chownErr != nil {
+					if config.OnError != nil {
+						config.OnError(fmt.Errorf("failed to chown token file: %w", chownErr))
+					}
+				}
 			}
 
 			if config != nil && config.OnRefreshed != nil {
